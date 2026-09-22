@@ -15,6 +15,8 @@ test("the prompt is the host's instructions, then the types, then the rules, the
   assert.equal(RULES.at(-1), "Call a tool without a preface; write only the answer.");
   assert.deepEqual(LANGS, ["en", "de"]);
   assert.ok(RULES.some((r) => r.startsWith("Write Markdown of this subset")), "the Markdown rule is missing");
+  assert.ok(RULES.some((r) => r.includes("write an address bare")), "the bare-address rule is missing");
+  assert.ok(!RULES.some((r) => r.includes("no links,")), "the blanket no-links rule is gone");
   assert.ok(RULES.some((r) => r.startsWith("Every question about this model is answered through a tool")), "the tool rule is missing");
   assert.ok(RULES.some((r) => r.includes("list_entities with that type")), "the list-a-type rule is missing");
   assert.ok(!RULES.some((r) => r.includes("Search before you fetch")), "the search-first rule is gone");
