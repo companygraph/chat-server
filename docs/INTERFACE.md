@@ -6,7 +6,7 @@ What a page's widget, or any client, may rely on: the routes, the request, the e
 
 | Route | Method | Answer |
 | --- | --- | --- |
-| `/` | GET, HEAD | a page saying what the chat is, which site opens it, which host it reads and at which commit |
+| `/` | GET, HEAD | a page in the family's shell: the model's own taglines, the four paths, the events, the fence and what it reads, built the way the MCP host's page is |
 | `/health` | GET | `{ ok: true, host }`, `host` the MCP host's provenance as last read |
 | `/chat` | GET | what the chat is, without spending a token: `model`, `provider`, `vertex` or `anthropic`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
 | `/chat` | OPTIONS | the preflight, `204` for an origin the deployment named and `403` for another |
@@ -58,3 +58,5 @@ The input-equivalent token: input tokens as they are, cache writes at 1.25, cach
 ## What counts as a break
 
 A route removed or renamed, a field removed from `GET /chat` or from an event, an event removed, a code removed or its status changed, a bound tightened. A field or an event added is not.
+
+The page's class names are the contract a deployment's stylesheet is written against; one of them removed or renamed is a break.

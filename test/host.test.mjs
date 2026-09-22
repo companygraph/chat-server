@@ -12,6 +12,7 @@ after(async () => { await host.close(); await fixture.close(); });
 test("the handshake gives the instructions, the tools in the model's shape, and where the model is", () => {
   assert.match(host.instructions, /Terms the tools use/);
   assert.match(host.instructions, /adds nothing/);
+  assert.equal(host.title, EXAMPLE_ROOT);
   const names = host.tools.map((t) => t.name);
   assert.ok(names.includes("search") && names.includes("get_entity") && names.includes("list_types"));
   for (const t of host.tools) {

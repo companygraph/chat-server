@@ -8,6 +8,8 @@ The design is [`docs/superpowers/specs/2026-09-22-chat-server-design.md`](docs/s
 
 `POST /chat` takes the conversation and answers a stream of events: the text as it is generated, a `cite` for every entity a tool returned, and `done` with what the message cost. The model runs at most four tool rounds a message over the host's own tools, with the host's own instructions as the start of its prompt and a few rules after them: every claim from a tool, every claim naming its entity, the model does not say where it does not.
 
+`/` is a page for whoever types the host into a browser, built as the MCP host's own page is built, from the model's own words, and styled by the deployment's stylesheet.
+
 ## The fence
 
 Nothing here can spend more than its deployment wrote down. A message is at most 1,000 characters, the model sees the last eight turns, a tool's answer is cut at 16,000 characters, the output stops at 700 tokens, and a message runs at most four rounds, so one call has a known ceiling. An address gets twenty messages an hour, on a message and on `GET /chat` alike. A meter in one Firestore document counts every call in input-equivalent tokens against a day's share and a month's ceiling and refuses the next message when either is spent; a `closed` flag in the same document switches the chat off without a deploy. Every refusal is made before the model is asked and costs nothing. Around it, the deployment lowers the model's quota on the project and raises its budget.
