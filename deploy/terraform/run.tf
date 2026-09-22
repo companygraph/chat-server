@@ -71,6 +71,21 @@ resource "google_cloud_run_v2_service" "chat" {
         name  = "CHAT_PROXY_HOPS"
         value = tostring(var.proxy_hops)
       }
+      # With the Anthropic API, the key rides in from the project's secret, latest version. The
+      # secret is the owner's: the module neither makes it nor grants access to it, so a deploy
+      # that mounts it before the owner's three commands fails at Cloud Run's own check, by name.
+      dynamic "env" {
+        for_each = var.model_provider == "anthropic" ? [1] : []
+        content {
+          name = "ANTHROPIC_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = "chat-anthropic-key"
+              version = "latest"
+            }
+          }
+        }
+      }
     }
   }
   depends_on = [google_project_service.chat, google_firestore_database.meter, google_project_iam_member.chat]

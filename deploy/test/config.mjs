@@ -15,6 +15,7 @@ export function registerConfigTests() {
     assert.ok(Array.isArray(c.origins) && c.origins.length > 0);
     for (const o of c.origins) assert.match(o, /^https:\/\/[^/]+$/, `${o} is an origin, scheme and host only`);
     assert.ok(Number.isInteger(c.month_tokens) && c.month_tokens > 0);
+    if ("provider" in c) assert.ok(["vertex", "anthropic"].includes(c.provider), "provider is vertex or anthropic");
   });
 
   test("the host it reads is this deployment's own, and the chat's site is not the host's site", () => {

@@ -22,3 +22,14 @@ variable "run_host" {
   type    = string
   default = ""
 }
+# Which API answers: Vertex AI in this project, or the Anthropic API with the key the owner put
+# in the project's secret `chat-anthropic-key`. The secret, its version and the runtime's read
+# access are the owner's, made before the deploy that mounts it.
+variable "model_provider" {
+  type    = string
+  default = "vertex"
+  validation {
+    condition     = contains(["vertex", "anthropic"], var.model_provider)
+    error_message = "model_provider is vertex or anthropic."
+  }
+}

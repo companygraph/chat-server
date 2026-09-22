@@ -102,6 +102,9 @@ jobs:
             GOT=$(jq -r ".$field" live.json)
             echo "$field: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
           done
+          WANT=$(jq -r '.provider // "vertex"' ../../chat/chat.json)
+          GOT=$(jq -r .provider live.json)
+          echo "provider: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
           WANT=$(jq -c .origins ../../chat/chat.json)
           GOT=$(jq -c .origins live.json)
           echo "origins: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
