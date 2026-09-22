@@ -1,0 +1,34 @@
+{
+  "name": "companygraph-chat-server",
+  "version": "0.1.0",
+  "description": "A chat over any CompanyGraph MCP host: the model asked in prose, answered from its tools",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "files": ["lib", "bin", "deploy"],
+  "bin": {
+    "companygraph-chat-http": "bin/http.mjs",
+    "companygraph-chat-deploy": "bin/deploy.mjs"
+  },
+  "exports": {
+    ".": "./lib/http.mjs",
+    "./errors": "./lib/errors.mjs",
+    "./config": "./lib/config.mjs",
+    "./shape": "./lib/shape.mjs",
+    "./page": "./lib/page.mjs",
+    "./deploy/tests": "./deploy/test/index.mjs"
+  },
+  "scripts": {
+    "fixtures": "node scripts/fixtures.mjs",
+    "pretest": "node scripts/fixtures.mjs",
+    "test": "node --test 'test/*.test.mjs'"
+  },
+  "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.14.0",
+    "@google-cloud/firestore": "^7.11.0",
+    "@modelcontextprotocol/client": "^2.0.0"
+  },
+  "devDependencies": {
+    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.23.0"
+  }
+}

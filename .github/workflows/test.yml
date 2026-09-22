@@ -1,0 +1,26 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - run: terraform -chdir=deploy/terraform init -backend=false -input=false
+      - run: terraform -chdir=deploy/terraform validate
+      - run: terraform fmt -check -recursive deploy

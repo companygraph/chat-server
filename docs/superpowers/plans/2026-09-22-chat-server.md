@@ -57,10 +57,12 @@
 ### Task 1: The repository joins the family, with a real fixture host
 
 **Files:**
+
 - Create: `package.json`, `LICENSE`, `.gitignore`, `README.md`, `AGENTS.md`, `conventions.json`, `.claude/agents/writer.md`, `.claude/agents/translator.md`, `.github/workflows/conventions.yml`, `.github/workflows/test.yml`, `scripts/fixtures.mjs`, `test/helpers.mjs`
 - Test: `test/fixture.test.mjs`
 
 **Interfaces:**
+
 - Produces: `startFixtureHost()` in `test/helpers.mjs`, returning `{ url, close }` where `url` is `http://127.0.0.1:<port>/mcp`; `EXAMPLE_ROOT`, the example's root entity name read from the fixture (`Beacon Systems` in meta-model v0.42.0's example, read rather than typed).
 
 - [ ] **Step 1: package.json**
@@ -290,13 +292,11 @@ test("the fixture host is a real MCP host over the worked example", async () => 
 
 - [ ] **Step 9: Run the suite**
 
-Run: `npm test`
-Expected: fixtures fetched, 1 test passes. If `client.getServerVersion()` is not the accessor the installed client exposes, read `node_modules/@modelcontextprotocol/client/dist/index.d.mts` for the method that returns the server's `Implementation` and use that; the assertion is that the title is the example's root.
+Run: `npm test` Expected: fixtures fetched, 1 test passes. If `client.getServerVersion()` is not the accessor the installed client exposes, read `node_modules/@modelcontextprotocol/client/dist/index.d.mts` for the method that returns the server's `Implementation` and use that; the assertion is that the title is the example's root.
 
 - [ ] **Step 10: Checks and commit**
 
-Run: `sh conventions/conventions-check && sh conventions/conventions-format check`
-Expected: both exit 0.
+Run: `sh conventions/conventions-check && sh conventions/conventions-format check` Expected: both exit 0.
 
 ```sh
 git add -A
@@ -319,10 +319,12 @@ git log -1 --format='[%s]'
 ### Task 2: Errors and configuration
 
 **Files:**
+
 - Create: `lib/errors.mjs`, `lib/config.mjs`
 - Test: `test/errors.test.mjs`, `test/config.test.mjs`
 
 **Interfaces:**
+
 - Produces: `ChatError` with `code`, `status`, `message`; `CODES`, the code-to-status table; `refusal(err)`, the JSON body of a refusal; `configFromEnv(env)` returning `{ mcpUrl, origins, hosts, monthTokens, project, region, proxyHops, port, meter }`.
 
 - [ ] **Step 1: Failing tests**
@@ -393,8 +395,7 @@ test("hosts unset means any, and the meter and hops can be set", () => {
 
 - [ ] **Step 2: Run to see them fail**
 
-Run: `npm test`
-Expected: both files fail at import, `Cannot find module`.
+Run: `npm test` Expected: both files fail at import, `Cannot find module`.
 
 - [ ] **Step 3: lib/errors.mjs**
 
@@ -463,8 +464,7 @@ export function configFromEnv(env = process.env) {
 
 - [ ] **Step 5: Run, then commit**
 
-Run: `npm test`
-Expected: all pass.
+Run: `npm test` Expected: all pass.
 
 ```sh
 git add lib/errors.mjs lib/config.mjs test/errors.test.mjs test/config.test.mjs
@@ -485,10 +485,12 @@ git log -1 --format='[%s]'
 ### Task 3: The request's shape, the answering rules, and portability
 
 **Files:**
+
 - Create: `lib/shape.mjs`, `lib/prompt.mjs`
 - Test: `test/shape.test.mjs`, `test/prompt.test.mjs`, `test/portability.test.mjs`
 
 **Interfaces:**
+
 - Produces: constants `MAX_MESSAGE_CHARS = 1000`, `HISTORY_TURNS = 8`, `MAX_TOOL_RESULT_CHARS = 16000`, `MAX_OUTPUT_TOKENS = 700`, `MAX_ROUNDS = 4`, `MAX_BODY_BYTES = 65536`, `CONVERSATION_MESSAGES = 20`; `validateMessages(messages)` → normalized `[{ role, content }]` or throws `ChatError`; `window(messages)` → the last `HISTORY_TURNS` ending in `user`; `truncate(text)` → the text cut with a trailing line; `LANGS = ["en", "de"]`; `RULES` (array of sentences); `systemPrompt(instructions, lang)`.
 
 - [ ] **Step 1: Failing tests**
@@ -592,8 +594,7 @@ test("lib/ and bin/ name no entity of the example and no fact of an instance", (
 
 - [ ] **Step 2: Run to see them fail**
 
-Run: `npm test`
-Expected: shape and prompt fail at import; portability passes (nothing in `lib/` yet names anything) — that is fine, it stays as the standing guard.
+Run: `npm test` Expected: shape and prompt fail at import; portability passes (nothing in `lib/` yet names anything) — that is fine, it stays as the standing guard.
 
 - [ ] **Step 3: lib/shape.mjs**
 
@@ -672,8 +673,7 @@ export function systemPrompt(instructions, lang) {
 
 - [ ] **Step 5: Run, then commit**
 
-Run: `npm test`
-Expected: all pass.
+Run: `npm test` Expected: all pass.
 
 ```sh
 git add lib/shape.mjs lib/prompt.mjs test/shape.test.mjs test/prompt.test.mjs test/portability.test.mjs
@@ -696,10 +696,12 @@ git log -1 --format='[%s]'
 ### Task 4: The host
 
 **Files:**
+
 - Create: `lib/host.mjs`
 - Test: `test/host.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `startFixtureHost()`, `ChatError`.
 - Produces: `connectHost(url)` → `Host` with `url`, `instructions` (string), `tools` (array of `{ name, description, input_schema }`), `provenance` (`{ commit, repo, core, parser }` from `list_types`), `async call(name, args)` → `{ text, data, isError }`, `async close()`. A failure to connect or to call, after one reconnect, throws `ChatError("host_down")`.
 
@@ -752,8 +754,7 @@ test("a call after the host went away reconnects once, and a host that is gone i
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: `Cannot find module '../lib/host.mjs'`.
+Run: `npm test` Expected: `Cannot find module '../lib/host.mjs'`.
 
 - [ ] **Step 3: lib/host.mjs**
 
@@ -809,8 +810,7 @@ If `client.getInstructions()` is not the accessor the installed client exposes, 
 
 - [ ] **Step 4: Run, then commit**
 
-Run: `npm test`
-Expected: all pass, including the reconnect case (the second host is closed, the call fails, the reconnect fails, `host_down`).
+Run: `npm test` Expected: all pass, including the reconnect case (the second host is closed, the call fails, the reconnect fails, `host_down`).
 
 ```sh
 git add lib/host.mjs test/host.test.mjs
@@ -831,10 +831,12 @@ git log -1 --format='[%s]'
 ### Task 5: The model
 
 **Files:**
+
 - Create: `lib/model.mjs`
 - Test: `test/model.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `MAX_OUTPUT_TOKENS` from shape.
 - Produces: `MODEL = "claude-sonnet-5"`, `EFFORT = "low"`, `WEIGHTS = { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 }`; `params({ system, tools, messages, final })` → the Messages request; `vertexModel({ project, region })` → `{ name, async turn(request, onText) }` returning the final message `{ content, stop_reason, usage }`. A test's fake model implements the same `turn`.
 
@@ -882,8 +884,7 @@ test("a Vertex model is built from a project and a region and exposes turn", () 
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: `Cannot find module '../lib/model.mjs'`.
+Run: `npm test` Expected: `Cannot find module '../lib/model.mjs'`.
 
 - [ ] **Step 3: lib/model.mjs**
 
@@ -938,8 +939,7 @@ If the installed `@anthropic-ai/vertex-sdk` constructor takes other option names
 
 - [ ] **Step 4: Run, then commit**
 
-Run: `npm test`
-Expected: all pass.
+Run: `npm test` Expected: all pass.
 
 ```sh
 git add lib/model.mjs test/model.test.mjs
@@ -960,10 +960,12 @@ git log -1 --format='[%s]'
 ### Task 6: The meter
 
 **Files:**
+
 - Create: `lib/meter.mjs`, `lib/firestore.mjs`
 - Test: `test/meter.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `WEIGHTS`, `ChatError`.
 - Produces: `units(usage)` → integer; `ESTIMATE = 30000`; `class MemoryStore { async transact(fn) }` where `fn(doc)` returns the next doc; `class Meter { constructor(store, { monthTokens, now }) ; async state() ; async reserve(estimate = ESTIMATE) ; async settle(estimate, actual) }` where `state()` returns `{ day, dayTokens, dayShare, month, monthTokens, monthCeiling, closed }`, `reserve` adds the estimate and throws `closed`, `over_day` or `over_month` if the day or month is spent after it (and undoes the add when it throws), `settle` replaces the estimate with what was used; `class FirestoreStore { constructor({ db, path = "chat/meter" }) ; async transact(fn) }`.
 
@@ -1045,8 +1047,7 @@ test("the Firestore store runs the function inside a transaction on one document
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: `Cannot find module '../lib/meter.mjs'`.
+Run: `npm test` Expected: `Cannot find module '../lib/meter.mjs'`.
 
 - [ ] **Step 3: lib/meter.mjs**
 
@@ -1153,8 +1154,7 @@ export class FirestoreStore {
 
 - [ ] **Step 5: Run, then commit**
 
-Run: `npm test`
-Expected: all pass.
+Run: `npm test` Expected: all pass.
 
 ```sh
 git add lib/meter.mjs lib/firestore.mjs test/meter.test.mjs
@@ -1177,10 +1177,12 @@ git log -1 --format='[%s]'
 ### Task 7: The bucket and the client's address
 
 **Files:**
+
 - Create: `lib/bucket.mjs`
 - Test: `test/bucket.test.mjs`
 
 **Interfaces:**
+
 - Produces: `class Bucket { constructor({ perHour = 20, now }) ; take(address) → boolean }`; `clientAddress(req, hops)` → string.
 
 - [ ] **Step 1: Failing test**
@@ -1214,8 +1216,7 @@ test("the address is the one before the trusted hops, or the socket's", () => {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: `Cannot find module '../lib/bucket.mjs'`.
+Run: `npm test` Expected: `Cannot find module '../lib/bucket.mjs'`.
 
 - [ ] **Step 3: lib/bucket.mjs**
 
@@ -1255,8 +1256,7 @@ export function clientAddress(req, hops = 1) {
 
 - [ ] **Step 4: Run, then commit**
 
-Run: `npm test`
-Expected: all pass.
+Run: `npm test` Expected: all pass.
 
 ```sh
 git add lib/bucket.mjs test/bucket.test.mjs
@@ -1277,10 +1277,12 @@ git log -1 --format='[%s]'
 ### Task 8: The loop
 
 **Files:**
+
 - Create: `lib/loop.mjs`
 - Test: `test/loop.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `Host` (Task 4), a model with `turn` (Task 5), `Meter` (Task 6), `params`, shape constants, `systemPrompt`.
 - Produces: `answer({ host, model, meter }, { messages, lang }, emit)` where `emit(event, data)` is called with `text` `{ text }`, `cite` `{ id, title, type, url }`, and finally `done` `{ model, spent, dayLeft }`. Throws `ChatError` before the first emit for `bad_request`, `too_long`, `closed`, `over_day`, `over_month`; throws `ChatError("host_down")` from a tool call. Returns `{ spent }`.
 
@@ -1407,8 +1409,7 @@ test("only the window reaches the model", async () => {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: `Cannot find module '../lib/loop.mjs'`.
+Run: `npm test` Expected: `Cannot find module '../lib/loop.mjs'`.
 
 - [ ] **Step 3: lib/loop.mjs**
 
@@ -1468,8 +1469,7 @@ export async function answer({ host, model, meter }, { messages, lang }, emit) {
 
 - [ ] **Step 4: Run, then commit**
 
-Run: `npm test`
-Expected: all pass. If the first test's `done.spent` differs because `units` rounds, compute the expected from `units(usage) * 3` in the test rather than the literal.
+Run: `npm test` Expected: all pass. If the first test's `done.spent` differs because `units` rounds, compute the expected from `units(usage) * 3` in the test rather than the literal.
 
 ```sh
 git add lib/loop.mjs test/loop.test.mjs
@@ -1490,10 +1490,12 @@ git log -1 --format='[%s]'
 ### Task 9: The routes, the events on the wire, and the page
 
 **Files:**
+
 - Create: `lib/sse.mjs`, `lib/page.mjs`, `lib/http.mjs`
 - Test: `test/http.test.mjs`, `test/page.test.mjs`
 
 **Interfaces:**
+
 - Consumes: everything above.
 - Produces: `sse(res)` → `{ send(event, data), end() }`; `renderPage({ config, host, origin, css, brand, icon })` → HTML; `createHttpServer({ config, host, model, meter, bucket }, { pageCss = null, pageBrand = null, pageIcon = null } = {})` → `http.Server`. The markup contract of the page: `header .brand` (an `<a>` with an inline `<svg>` mark and `<b>name <span>word</span></b>`), `main.shell`, `.title h1` with `.r70` and `.rcl`, `.facts` (a `<dl>`), `.note`, `footer.credit`.
 
@@ -1699,8 +1701,7 @@ test("a supplied stylesheet replaces the built-in one, and a brand replaces the 
 
 - [ ] **Step 2: Run to see them fail**
 
-Run: `npm test`
-Expected: both fail at import.
+Run: `npm test` Expected: both fail at import.
 
 - [ ] **Step 3: lib/sse.mjs**
 
@@ -1911,8 +1912,7 @@ export function createHttpServer({ config, host, model, meter, bucket }, { pageC
 
 - [ ] **Step 6: Run, then commit**
 
-Run: `npm test`
-Expected: all pass. One thing to watch: `fetch` in Node sends no `origin` header when none is given, and the `origin: ""` case in the test must reach the server as absent or empty; both pass the door.
+Run: `npm test` Expected: all pass. One thing to watch: `fetch` in Node sends no `origin` header when none is given, and the `origin: ""` case in the test must reach the server as absent or empty; both pass the door.
 
 ```sh
 git add lib/sse.mjs lib/page.mjs lib/http.mjs test/http.test.mjs test/page.test.mjs
@@ -1935,10 +1935,12 @@ git log -1 --format='[%s]'
 ### Task 10: The process and the deployment's commands
 
 **Files:**
+
 - Create: `bin/http.mjs`, `bin/deploy.mjs`, `deploy/build/config.mjs`, `deploy/build/serve.mjs`, `deploy/build/page-css.mjs`, `deploy/build/tag.mjs`
 - Test: `test/bin-http.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `configFromEnv`, `connectHost`, `vertexModel`, `Meter`, `MemoryStore`, `FirestoreStore`, `Bucket`, `createHttpServer`.
 - Produces: the `companygraph-chat-http` command with flags `--page-css`, `--page-brand`, `--page-icon` and `--model fake` (a scripted model for a local run without Vertex); the `companygraph-chat-deploy` command with `serve`, `page-css`, `tag`, run in a deployment's `chat/` directory.
 
@@ -1979,8 +1981,7 @@ test("a missing variable is one line on stderr and exit 2", async () => {
 
 - [ ] **Step 2: Run to see it fail**
 
-Run: `npm test`
-Expected: the spawn fails to find `bin/http.mjs`.
+Run: `npm test` Expected: the spawn fails to find `bin/http.mjs`.
 
 - [ ] **Step 3: bin/http.mjs**
 
@@ -2145,8 +2146,7 @@ Then `chmod +x bin/http.mjs bin/deploy.mjs`.
 
 - [ ] **Step 5: Run, then commit**
 
-Run: `npm test`
-Expected: all pass, the portability test included (`bin/` names nothing).
+Run: `npm test` Expected: all pass, the portability test included (`bin/` names nothing).
 
 ```sh
 git add bin deploy/build test/bin-http.test.mjs
@@ -2167,10 +2167,12 @@ git log -1 --format='[%s]'
 ### Task 11: The Terraform module, the reusable workflow, and the generic tests
 
 **Files:**
+
 - Create: `deploy/terraform/main.tf`, `variables.tf`, `run.tf`, `hosting.tf`, `outputs.tf`; `.github/workflows/deployment.yml`; `deploy/test/index.mjs`, `deploy/test/pin.mjs`, `deploy/test/config.mjs`, `deploy/test/page.mjs`
 - Test: `terraform validate` and `terraform fmt -check`; `test/deploy-tests.test.mjs`
 
 **Interfaces:**
+
 - Produces: the module's inputs `project`, `project_number`, `region`, `domain`, `site_id`, `mcp_url`, `origins` (list), `month_tokens` (number), `proxy_hops` (number, default 1), `run_host` (default ""), `image`; outputs `service_url`, `run_host`, `hosting_url`, `dns_records`. The workflow assumes a deployment's `chat/` directory (package.json, package-lock.json, chat.json, Dockerfile, brand.html, own.css, favicon.svg optional, test/) and `infra/chat/` root. `registerDeploymentTests()` for a deployment's `chat/test/`.
 
 - [ ] **Step 1: deploy/terraform/variables.tf**
@@ -2403,8 +2405,7 @@ output "dns_records" {
 
 - [ ] **Step 5: Validate**
 
-Run: `terraform -chdir=deploy/terraform init -backend=false -input=false && terraform -chdir=deploy/terraform validate && terraform fmt -check -recursive deploy`
-Expected: valid, formatted. Terraform is installed from `hashicorp/tap` (`brew install hashicorp/tap/terraform`) if absent; if it cannot be installed here, say so in the commit body and rely on the `terraform` job of `test.yml` on the pull request.
+Run: `terraform -chdir=deploy/terraform init -backend=false -input=false && terraform -chdir=deploy/terraform validate && terraform fmt -check -recursive deploy` Expected: valid, formatted. Terraform is installed from `hashicorp/tap` (`brew install hashicorp/tap/terraform`) if absent; if it cannot be installed here, say so in the commit body and rely on the `terraform` job of `test.yml` on the pull request.
 
 - [ ] **Step 6: .github/workflows/deployment.yml**
 
@@ -2685,8 +2686,7 @@ test("the deployment tests export one registration function", async () => {
 
 - [ ] **Step 9: Run, then commit**
 
-Run: `npm test && terraform fmt -check -recursive deploy`
-Expected: all pass.
+Run: `npm test && terraform fmt -check -recursive deploy` Expected: all pass.
 
 ```sh
 git add deploy .github/workflows/deployment.yml package.json package-lock.json test/deploy-tests.test.mjs
@@ -2707,6 +2707,7 @@ git log -1 --format='[%s]'
 ### Task 12: The documents, and the pull request
 
 **Files:**
+
 - Create: `docs/INTERFACE.md`
 - Modify: `README.md`
 
@@ -2804,6 +2805,7 @@ A deployment of an MCP host adds a `chat/` directory holding `package.json` pinn
 ## Tests
 
 `npm test` runs the suite against a real MCP host, the server package's own over the meta-model's worked example, started in-process, and a scripted model; nothing reaches Vertex AI, Firestore or a live host.
+
 ```
 
 - [ ] **Step 3: Checks and commit**

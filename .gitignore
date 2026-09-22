@@ -1,0 +1,13 @@
+# What every member of the family ignores: installed packages, and the state an editor
+# or a tool keeps beside the work.
+node_modules
+.vscode
+.claudian
+.superpowers
+
+test/fixtures/
+
+# What terraform init downloads into a module directory; never a module's own lock file, which
+# a caller ignores and which would only mislead there.
+.terraform/
+deploy/**/.terraform.lock.hcl
