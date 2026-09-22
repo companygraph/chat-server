@@ -517,14 +517,19 @@ test("a message over the limit is too_long, and whitespace does not count", () =
   assert.equal(validateMessages([turn("user", "  " + "x".repeat(MAX_MESSAGE_CHARS) + " ")])[0].content.length, MAX_MESSAGE_CHARS);
 });
 
-test("the window is the last turns and still ends in user", () => {
+test("the window is at most the last eight turns, begins with the visitor and ends with the visitor", () => {
   const long = [];
   for (let i = 0; i < 25; i++) long.push(turn(i % 2 ? "assistant" : "user", `t${i}`));
   const w = window(long);
-  assert.equal(w.length, HISTORY_TURNS);
+  // A valid conversation has an odd length, so the last eight always begin with an assistant
+  // turn, which is dropped: seven reach the model, the first the visitor's.
+  assert.equal(w.length, HISTORY_TURNS - 1);
   assert.equal(w[0].role, "user");
+  assert.equal(w[0].content, "t18");
   assert.equal(w[w.length - 1].role, "user");
   assert.equal(w[w.length - 1].content, "t24");
+  assert.equal(window(long.slice(0, 5)).length, 5, "a short conversation is sent whole");
+  assert.equal(window(long.slice(0, 9)).length, 7, "nine turns: the last eight, less the leading assistant turn");
 });
 
 test("a tool answer over the cap is cut with a line that says so", () => {
@@ -626,11 +631,12 @@ export function validateMessages(messages) {
   return out;
 }
 
-// The last turns, an even count so the first is user, ending in the visitor's message.
+// At most the last HISTORY_TURNS turns. A conversation begins and ends with the visitor, so its
+// length is odd and the last eight begin with an assistant turn, which the model may not be
+// given first; that turn is dropped, and seven reach the model.
 export function window(messages) {
-  const n = Math.min(messages.length, HISTORY_TURNS);
-  const start = messages.length - n;
-  return messages.slice(start % 2 === 0 ? start : start + 1);
+  const tail = messages.slice(-HISTORY_TURNS);
+  return tail[0]?.role === "assistant" ? tail.slice(1) : tail;
 }
 
 export function truncate(text) {
@@ -1388,13 +1394,14 @@ test("the shape and the meter refuse before any call, and nothing is emitted", a
   assert.equal(events.length, 0);
 });
 
-test("only the last eight turns reach the model", async () => {
+test("only the window reaches the model", async () => {
   const messages = [];
   for (let i = 0; i < 21; i++) messages.push({ role: i % 2 ? "assistant" : "user", content: `t${i}` });
   const model = fakeModel([textTurn("ok")]);
   await answer({ host, model, meter: meter() }, { messages, lang: "en" }, collect().emit);
-  assert.equal(model.requests[0].messages.length, 8);
-  assert.equal(model.requests[0].messages[0].content, "t13");
+  assert.equal(model.requests[0].messages.length, 7);
+  assert.equal(model.requests[0].messages[0].content, "t14");
+  assert.equal(model.requests[0].messages[0].role, "user");
 });
 ```
 
@@ -1600,13 +1607,14 @@ test("the twenty-first message from one address in an hour is busy", async () =>
   assert.equal((await r.json()).error.code, "busy");
 });
 
-test("a spent day and a closed switch are refused before the stream", async () => {
+test("a spent ceiling and a closed switch are refused before the stream", async () => {
+  // The month is checked before the day, so a ceiling below one call's estimate is over_month.
   const cfg = config({ monthTokens: 100 });
   const meter = new Meter(new MemoryStore(), { monthTokens: 100 });
   const base = await listen({ cfg, meter });
   const r = await post(base, { messages: [{ role: "user", content: "hi" }] });
   assert.equal(r.status, 429);
-  assert.equal((await r.json()).error.code, "over_day");
+  assert.equal((await r.json()).error.code, "over_month");
   await meter.store.transact((d) => ({ ...d, closed: true }));
   const c = await post(base, { messages: [{ role: "user", content: "hi" }] });
   assert.equal(c.status, 503);
