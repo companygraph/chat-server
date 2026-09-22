@@ -47,7 +47,8 @@ test("a question that needs two rounds gets them, and the entity fetched is cite
   const m = meter();
   const r = await answer({ host, model, meter: m }, { messages: [{ role: "user", content: "what is it?" }], lang: "en" }, emit);
   assert.equal(model.requests.length, 3);
-  assert.equal(model.requests[0].system[0].text.includes("Answer in English"), true);
+  assert.equal(model.requests[0].system[0].text.includes("answer in English"), true);
+  assert.match(model.requests[0].system[0].text, /types, each with how many entities it holds: .*\(\d+\)/);
   assert.equal(model.requests[0].tools.length, host.tools.length);
   assert.equal(model.requests[1].messages.at(-1).role, "user");
   assert.equal(model.requests[1].messages.at(-1).content[0].type, "tool_result");

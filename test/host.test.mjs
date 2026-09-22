@@ -23,6 +23,20 @@ test("the handshake gives the instructions, the tools in the model's shape, and 
   assert.equal(host.provenance.repo, "companygraph/meta-model");
 });
 
+test("the host's types are read at connect, kept while the commit stands, and read again when it moves", async () => {
+  const types = await host.types();
+  assert.ok(types.length > 0);
+  for (const t of types) { assert.equal(typeof t.type, "string"); assert.equal(typeof t.count, "number"); }
+  assert.ok(types.some((t) => t.count > 0));
+  const again = await host.types();
+  assert.strictEqual(again, types, "the same list while the commit stands");
+  host.provenance = { ...host.provenance, commit: "f".repeat(40) };
+  const fresh = await host.types();
+  assert.notStrictEqual(fresh, types, "read again once the commit moved");
+  assert.deepEqual(fresh, types);
+  assert.equal(host.provenance.commit, COMMIT, "and the read put the host's real commit back");
+});
+
 test("a call answers text and data, and a refusal is data with isError", async () => {
   const r = await host.call("search", { query: EXAMPLE_ROOT, match: "name" });
   assert.equal(r.isError, false);
