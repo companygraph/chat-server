@@ -53,15 +53,16 @@ test("a question that needs two rounds gets them, and the entity fetched is cite
   assert.equal(model.requests[1].messages.at(-1).role, "user");
   assert.equal(model.requests[1].messages.at(-1).content[0].type, "tool_result");
   const kinds = events.map(([e]) => e);
-  // The search round names what it found before the fetch round cites the one entity: a name
-  // and a cite for the same id both link the same place, so neither is held back for the other.
-  assert.deepEqual(kinds, ["names", "cite", "text", "done"]);
+  // The search round names what it found, the fetch round cites the one entity and names what
+  // that entity references: a name and a cite for the same id both link the same place, so
+  // neither is held back for the other.
+  assert.deepEqual(kinds, ["names", "cite", "names", "text", "done"]);
   const names = events[0][1].names;
   assert.ok(names.some((n) => n.id === rootId), "the search round names what it found");
   const cite = events[1][1];
   assert.equal(cite.id, rootId); assert.equal(cite.title, EXAMPLE_ROOT); assert.equal(typeof cite.url, "string");
-  assert.deepEqual(events[2][1], { text: "It is the company." });
-  const done = events[3][1];
+  assert.deepEqual(events[3][1], { text: "It is the company." });
+  const done = events[4][1];
   assert.equal(done.model.repo, "companygraph/meta-model");
   assert.equal(done.spent, r.spent);
   assert.equal(done.spent, 3 * (1000 + 500));
@@ -230,7 +231,9 @@ test("a list answer gives up every entity it named, once a message and never one
 test("namesIn reads a list, ignores a refusal and a single entity, and stops at sixty", () => {
   assert.deepEqual(namesIn({ results: [{ id: "a/b", title: "A B" }] }), [{ id: "a/b", title: "A B" }]);
   assert.deepEqual(namesIn({ error: { code: "not_found" }, results: [{ id: "a/b", title: "A B" }] }), []);
-  assert.deepEqual(namesIn({ entity: { id: "a/b", title: "A B" } }), []);
+  assert.deepEqual(namesIn({ entity: { id: "a/b", title: "A B" } }), [], "the entity itself is the cite's, not a name");
+  assert.deepEqual(namesIn({ entity: { id: "a/b", references: [{ via: "Skills.Skill", to: { id: "skills/java", name: "Java" } }] } }),
+    [{ id: "skills/java", title: "Java" }], "and what it references is a name");
   assert.equal(namesIn({ entities: Array.from({ length: 80 }, (_, i) => ({ id: `t/${i}`, name: `N ${i}` })) }).length, 60);
   assert.deepEqual(namesIn({ results: [{ id: "a/b", title: "Ab" }] }), [], "a name of two letters is not linked");
 });
