@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, params, vertexModel } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, params, vertexModel, asChatError } from "../lib/model.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -12,10 +12,23 @@ test("a request names the model, the effort, the output limit, and marks the pre
   assert.equal(r.max_tokens, MAX_OUTPUT_TOKENS);
   assert.deepEqual(r.output_config, { effort: EFFORT });
   assert.deepEqual(r.system, [{ type: "text", text: "S", cache_control: { type: "ephemeral" } }]);
-  assert.deepEqual(r.tools[1].cache_control, { type: "ephemeral" });
+  assert.equal(r.tools[1].cache_control, undefined, "the system mark already covers the tools before it");
   assert.equal(r.tools[0].cache_control, undefined);
+  assert.deepEqual(r.messages, [{ role: "user", content: [{ type: "text", text: "q", cache_control: { type: "ephemeral" } }] }]);
   assert.equal(r.tool_choice, undefined);
   assert.equal(r.thinking, undefined);
+});
+
+test("the newest block carries the mark, whatever its shape, and the caller's messages are left alone", () => {
+  const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }, { type: "tool_result", tool_use_id: "b", content: "y" }];
+  const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "text", text: "t" }] }, { role: "user", content: results }];
+  const r = params({ system: "S", tools, messages });
+  assert.deepEqual(r.messages.at(-1).content.at(-1).cache_control, { type: "ephemeral" });
+  assert.equal(r.messages.at(-1).content[0].cache_control, undefined);
+  assert.equal(r.messages[1].content[0].cache_control, undefined);
+  assert.equal(typeof r.messages[0].content, "string", "only the last message is rewritten");
+  assert.equal(messages.at(-1).content, results, "the caller's array is not replaced");
+  assert.equal(results[1].cache_control, undefined, "nor is a block of it marked in place");
 });
 
 test("the final round keeps the tools listed and forbids another call", () => {
@@ -32,4 +45,15 @@ test("a Vertex model is built from a project and a region and exposes turn", () 
   const m = vertexModel({ project: "p", region: "eu" });
   assert.equal(m.name, MODEL);
   assert.equal(typeof m.turn, "function");
+});
+
+test("the minute's rate from the model is busy, and any other error is what it was", () => {
+  const rate = Object.assign(new Error("Too Many Requests"), { status: 429 });
+  const busy = asChatError(rate);
+  assert.equal(busy.code, "busy");
+  assert.equal(busy.status, 429);
+  const other = Object.assign(new Error("boom"), { status: 500 });
+  assert.equal(asChatError(other), other);
+  const plain = new Error("no status");
+  assert.equal(asChatError(plain), plain);
 });

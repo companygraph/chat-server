@@ -18,12 +18,14 @@ const toolTurn = (name, input, text = "") => ({
 });
 
 function fakeModel(script) {
-  const requests = [];
+  const requests = [], options = [];
   return {
     requests,
+    options,
     name: "fake",
-    async turn(request, onText) {
+    async turn(request, onText, opts) {
       requests.push(request);
+      options.push(opts);
       const msg = script.shift();
       for (const c of msg.content) if (c.type === "text") onText(c.text);
       return msg;
@@ -104,6 +106,30 @@ test("the shape and the meter refuse before any call, and nothing is emitted", a
   await assert.rejects(() => answer({ host, model, meter: closed }, { messages: [{ role: "user", content: "x" }], lang: "en" }, emit), (e) => e.code === "closed");
   assert.equal(model.requests.length, 0);
   assert.equal(events.length, 0);
+});
+
+test("every request marks its newest block, which is what the next round resends", async () => {
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, collect().emit);
+  assert.equal(model.requests.length, 2);
+  for (const r of model.requests) {
+    assert.deepEqual(r.messages.at(-1).content.at(-1).cache_control, { type: "ephemeral" });
+    assert.equal(r.tools.at(-1).cache_control, undefined);
+  }
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).type, "tool_result");
+});
+
+test("a visitor who goes away stops the loop after the round it is in, and the meter is still settled", async () => {
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("never")]);
+  const { events, emit } = collect();
+  const m = meter();
+  const ac = new AbortController();
+  ac.abort();
+  const r = await answer({ host, model, meter: m }, { messages: [{ role: "user", content: "hi" }], lang: "en", signal: ac.signal }, emit);
+  assert.equal(model.requests.length, 1);
+  assert.equal(model.options[0].signal, ac.signal, "the signal reaches the model");
+  assert.equal(events.filter(([e]) => e === "done").length, 0, "nothing is emitted once the socket is gone");
+  assert.equal((await m.state()).dayTokens, r.spent);
 });
 
 test("only the window reaches the model", async () => {

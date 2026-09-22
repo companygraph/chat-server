@@ -9,6 +9,7 @@ test("the prompt is the host's instructions, then the rules, then the language",
   assert.ok(p.indexOf("Terms the tools use.") < p.indexOf(RULES[0]));
   assert.match(p, /Answer in German/);
   assert.match(systemPrompt("x", "en"), /Answer in English/);
+  assert.equal(RULES.at(-1), "Call a tool without a preface; write only the answer.");
   assert.deepEqual(LANGS, ["en", "de"]);
 });
 
