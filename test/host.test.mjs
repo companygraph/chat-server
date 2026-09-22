@@ -1,7 +1,9 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
+import { createHttpServer } from "companygraph-mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
-import { startFixtureHost, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
+import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
@@ -28,6 +30,43 @@ test("a call answers text and data, and a refusal is data with isError", async (
   const bad = await host.call("fetch", { id: "nothing/here" });
   assert.equal(bad.isError, true);
   assert.equal(typeof bad.data.error.code, "string");
+});
+
+test("a call answers with the host's provenance as this call reports it", async () => {
+  host.provenance = null;
+  const r = await host.call("list_types", {});
+  assert.deepEqual(host.provenance, r.data.model);
+  assert.equal(host.provenance.commit, COMMIT);
+});
+
+// The fixture host behind a counter, so a reconnect can be seen: opening one costs several
+// requests where a call costs one.
+async function countedHost() {
+  const inner = createHttpServer(exampleSnapshot());
+  let requests = 0;
+  const server = http.createServer((req, res) => { requests += 1; inner.emit("request", req, res); });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const h = await connectHost(`http://127.0.0.1:${server.address().port}/mcp`);
+  return { host: h, since: () => { const n = requests; requests = 0; return n; }, close: async () => { await h.close(); server.close(); } };
+}
+
+test("a tool the host does not have is the host refusing, not the host gone: no reconnect", async () => {
+  const c = await countedHost();
+  try {
+    c.since();
+    await c.host.call("list_types", {});
+    const good = c.since();
+    assert.equal(good, 1, "an answered call is one request; opening a connection is several");
+    await assert.rejects(() => c.host.call("no_such_tool", {}), (e) => {
+      assert.notEqual(e.code, "host_down");
+      assert.match(e.message, /no_such_tool/);
+      return true;
+    });
+    assert.equal(c.since(), good, "a refused call costs what an answered one costs, so nothing was reopened");
+    assert.equal((await c.host.call("list_types", {})).isError, false, "and the connection is still the one it was");
+  } finally {
+    await c.close();
+  }
 });
 
 test("a call after the host went away reconnects once, and a host that is gone is host_down", async () => {
