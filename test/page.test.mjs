@@ -56,3 +56,16 @@ test("a vertex provider reads Vertex AI, and a null provenance reads a commit no
   const unread = renderPage({ config, host: { ...host, provenance: null }, origin: "https://chat.site.test" });
   assert.match(unread, /a commit not read yet/);
 });
+
+test("What it reads carries the short commit, in a paragraph that does not wrap; the note keeps the full one, where it does", () => {
+  const commit = "0123456789abcdef0123456789abcdef01234567";
+  const longHost = { ...host, provenance: { ...host.provenance, commit } };
+  const out = renderPage({ config, host: longHost, origin: "https://chat.site.test" });
+
+  const readsSection = out.slice(out.indexOf("<h2>What it reads</h2>"));
+  assert.ok(readsSection.includes(commit.slice(0, 7)), "the lede carries the seven-character commit");
+  assert.ok(!readsSection.includes(commit), "the lede does not carry the full forty-character commit");
+
+  const noteSection = out.slice(out.indexOf('<div class="note">'), out.indexOf("<h2>The endpoint</h2>"));
+  assert.ok(noteSection.includes(commit), "the note carries the full commit, where it wraps");
+});
