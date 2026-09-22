@@ -12,4 +12,5 @@ test("every code the interface names has a status, and a refusal carries code an
 
 test("a code the table does not know is a programming error, not a refusal", () => {
   assert.throws(() => new ChatError("nope", "x"), /unknown code/);
+  assert.throws(() => new ChatError("toString", "x"), /unknown code/);
 });
