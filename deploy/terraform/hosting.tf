@@ -2,9 +2,10 @@
 # the MCP host's, one version rewriting every path to the service, uncacheable, its release and
 # the domain. The Firebase project already exists from the host's module; it is read, not made.
 resource "google_firebase_hosting_site" "this" {
-  provider = google-beta
-  project  = var.project
-  site_id  = var.site_id
+  provider   = google-beta
+  project    = var.project
+  site_id    = var.site_id
+  depends_on = [google_project_service.chat]
 }
 
 resource "google_firebase_hosting_version" "this" {
