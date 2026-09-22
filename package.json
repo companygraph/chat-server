@@ -1,11 +1,17 @@
 {
   "name": "companygraph-chat-server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A chat over any CompanyGraph MCP host: the model asked in prose, answered from its tools",
   "license": "Apache-2.0",
   "type": "module",
-  "engines": { "node": ">=22" },
-  "files": ["lib", "bin", "deploy"],
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "deploy"
+  ],
   "bin": {
     "companygraph-chat-http": "bin/http.mjs",
     "companygraph-chat-deploy": "bin/deploy.mjs"
