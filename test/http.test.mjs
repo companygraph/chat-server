@@ -60,6 +60,15 @@ test("GET /chat says what the chat is and spends nothing", async () => {
   assert.equal(typeof c.address, "string");
 });
 
+test("GET /chat is held by the same bucket as a message", async () => {
+  const base = await listen();
+  const headers = { "x-forwarded-for": "203.0.113.9, 35.0.0.1" };
+  for (let i = 0; i < 20; i++) assert.equal((await fetch(`${base}/chat`, { headers })).status, 200);
+  const r = await fetch(`${base}/chat`, { headers });
+  assert.equal(r.status, 429);
+  assert.equal((await r.json()).error.code, "busy");
+});
+
 test("a message is answered as a stream of events", async () => {
   const base = await listen();
   const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" });

@@ -62,6 +62,70 @@ test("the default estimate is the design's ceiling for one call", () => {
   assert.equal(ESTIMATE, 30000);
 });
 
+// A store whose transaction is retried: Firestore reruns the function on contention, and only
+// the last run is the one that commits.
+const retrying = (...snapshots) => {
+  const commits = [];
+  return {
+    commits,
+    async transact(fn) {
+      let next;
+      for (const snap of snapshots) next = await fn({ ...snap });
+      commits.push(next);
+      return next;
+    },
+  };
+};
+
+test("a retried transaction is judged by the run that commits, not by the one before it", async () => {
+  const full = { day: "2026-09-22", month: "2026-09", dayTokens: 100, monthTokens: 100, closed: false };
+  const room = { ...full, dayTokens: 10, monthTokens: 10 };
+  const store = retrying(full, room);
+  const m = new Meter(store, { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  await m.reserve(60);
+  assert.equal(store.commits.length, 1);
+  assert.equal(store.commits[0].dayTokens, 70);
+  assert.equal(store.commits[0].monthTokens, 70);
+});
+
+test("settle floors at zero, so an answer under the estimate cannot drive a counter below nothing", async () => {
+  const m = new Meter(new MemoryStore(), { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  const doc = await m.settle(60, 0);
+  assert.equal(doc.dayTokens, 0);
+  assert.equal(doc.monthTokens, 0);
+  assert.equal((await m.state()).dayTokens, 0);
+});
+
+// A Firestore whose document survives the transaction, so a second call reads what the first
+// wrote and a write can be counted.
+const fakeDb = (doc) => {
+  const held = { doc, sets: 0 };
+  held.db = {
+    doc: () => ({ id: "meter" }),
+    runTransaction: async (fn) => fn({
+      get: async () => ({ exists: true, data: () => ({ ...held.doc }) }),
+      set: (ref, d) => { held.doc = d; held.sets += 1; },
+    }),
+  };
+  return held;
+};
+
+test("a state that changes nothing and a refused reserve cost no write", async () => {
+  const full = fakeDb({ day: "2026-09-22", month: "2026-09", dayTokens: 100, monthTokens: 100, closed: false });
+  const m = new Meter(new FirestoreStore({ db: full.db }), { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  assert.equal((await m.state()).dayTokens, 100);
+  assert.equal(full.sets, 0, "a document read back unchanged is not written");
+  await assert.rejects(() => m.reserve(1), (e) => e.code === "over_day");
+  assert.equal(full.sets, 0, "a refused reserve puts nothing back, so it writes nothing");
+  assert.equal((await m.settle(10, 10)).dayTokens, 100);
+  assert.equal(full.sets, 0, "a settlement that moves nothing writes nothing");
+  const room = fakeDb({ day: "2026-09-22", month: "2026-09", dayTokens: 10, monthTokens: 10, closed: false });
+  const n = new Meter(new FirestoreStore({ db: room.db }), { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  await n.reserve(1);
+  assert.equal(room.sets, 1, "a reservation is one write");
+  assert.equal(room.doc.dayTokens, 11);
+});
+
 test("the Firestore store runs the function inside a transaction on one document", async () => {
   const writes = [];
   const fakeRef = { id: "meter" };
