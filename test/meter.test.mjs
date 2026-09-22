@@ -48,6 +48,16 @@ test("the switch closes the chat without touching the counters", async () => {
   await assert.rejects(() => m.reserve(1), (e) => e.code === "closed");
 });
 
+test("two reserves started together against a share that fits one: exactly one passes", async () => {
+  const store = new MemoryStore();
+  const m = new Meter(store, { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  const results = await Promise.allSettled([m.reserve(60), m.reserve(60)]);
+  const passed = results.filter((r) => r.status === "fulfilled").length;
+  assert.equal(passed, 1);
+  assert.equal(results.find((r) => r.status === "rejected").reason.code, "over_day");
+  assert.equal((await m.state()).dayTokens, 60);
+});
+
 test("the default estimate is the design's ceiling for one call", () => {
   assert.equal(ESTIMATE, 30000);
 });
