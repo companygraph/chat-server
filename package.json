@@ -29,6 +29,7 @@
     "@modelcontextprotocol/client": "^2.0.0"
   },
   "devDependencies": {
-    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.23.0"
+    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.23.0",
+    "playwright": "^1.63.0"
   }
 }

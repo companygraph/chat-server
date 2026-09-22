@@ -1,0 +1,98 @@
+# The build, the plan and the apply of a deployment's chat, called by the release the deployment's
+# chat/package.json pins. The deployment's values reach it from chat/chat.json; the identities and
+# the registry are the project's, made by the MCP host's bootstrap. The caller holds the
+# concurrency group.
+name: deployment
+on:
+  workflow_call:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+    defaults:
+      run:
+        working-directory: chat
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          jq -r '"PROJECT=\(.project)\nPROJECT_NUMBER=\(.project_number)\nREGION=\(.region)"' ../deployment.json >> "$GITHUB_ENV"
+      - run: |
+          echo "REGISTRY=$REGION-docker.pkg.dev/$PROJECT/mcp" >> "$GITHUB_ENV"
+          echo "WIF_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx companygraph-chat-deploy page-css
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - id: tag
+        run: echo "image=$REGISTRY/chat:$(npx companygraph-chat-deploy tag)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+      - run: docker build -t "${{ steps.tag.outputs.image }}" .
+      - if: github.event_name == 'push'
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: deploy@${{ env.PROJECT }}.iam.gserviceaccount.com
+      - if: github.event_name == 'push'
+        run: gcloud auth configure-docker $REGION-docker.pkg.dev --quiet && docker push "${{ steps.tag.outputs.image }}"
+  terraform:
+    needs: build
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: infra/chat
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          jq -r '"PROJECT=\(.project)\nPROJECT_NUMBER=\(.project_number)\nREGION=\(.region)"' ../../deployment.json >> "$GITHUB_ENV"
+      - run: |
+          echo "WIF_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github" >> "$GITHUB_ENV"
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ github.event_name == 'push' && 'terraform' || 'terraform-plan' }}@${{ env.PROJECT }}.iam.gserviceaccount.com
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.9.8
+          terraform_wrapper: false
+      - run: terraform init -input=false
+      - run: terraform fmt -check -recursive
+      - run: terraform validate
+      - if: github.event_name == 'pull_request'
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -lock=false -no-color -var "image=$IMAGE" > plan.txt 2>&1
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+        continue-on-error: true
+      - if: github.event_name == 'pull_request'
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          PR: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          { echo 'Terraform plan for the chat, `'"$IMAGE"'`'; echo; echo '```'; tail -c 60000 plan.txt; echo '```'; } > comment.md
+          gh pr comment "$PR" --repo "${{ github.repository }}" --body-file comment.md
+          test "${{ steps.plan.outputs.exit }}" = "0"
+      - if: github.event_name == 'push'
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: terraform apply -input=false -auto-approve -var "image=$IMAGE"
+      - if: github.event_name == 'push'
+        run: |
+          URL=$(terraform output -raw service_url)
+          WANT=$(jq -r .mcp_url ../../chat/chat.json)
+          GOT=$(curl -fsS --retry 10 --retry-all-errors --retry-delay 5 --max-time 30 "$URL/chat" | jq -r .mcp_url)
+          echo "reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
