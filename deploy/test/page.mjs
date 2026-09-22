@@ -13,7 +13,7 @@ export function registerPageTests() {
       const c = chat();
       html = renderPage({
         config: { mcpUrl: c.mcp_url, origins: c.origins, monthTokens: c.month_tokens },
-        host: { provenance: null },
+        host: { title: "Example", instructions: "", provenance: null },
         origin: `https://${c.domain}`,
         css: fs.readFileSync(path.join(DIST, "page.css"), "utf8"),
         brand: fs.readFileSync(path.join(ROOT, "brand.html"), "utf8").trim(),
