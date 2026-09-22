@@ -8,7 +8,7 @@ What a page's widget, or any client, may rely on: the routes, the request, the e
 | --- | --- | --- |
 | `/` | GET, HEAD | a page saying what the chat is, which site opens it, which host it reads and at which commit |
 | `/health` | GET | `{ ok: true, host }`, `host` the MCP host's provenance as last read |
-| `/chat` | GET | what the chat is, without spending anything: `model`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it |
+| `/chat` | GET | what the chat is, without spending a token: `model`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
 | `/chat` | OPTIONS | the preflight, `204` for an origin the deployment named and `403` for another |
 | `/chat` | POST | a message, answered as a stream of events |
 
@@ -20,6 +20,8 @@ A `POST /chat` carries the header `X-Chat: 1` and a JSON body of at most 64 KiB:
 
 A page whose `Origin` the deployment named gets `Access-Control-Allow-Origin` on the answer; a page whose `Origin` it did not name is refused; a client that sends no `Origin` passes.
 
+The bucket of twenty an hour is keyed on the address Google's front end writes into `X-Forwarded-For`, so it holds for a page that arrives through Firebase Hosting; a caller that reaches the Cloud Run address directly writes that header itself and chooses its own key, and there the meter is the only bound.
+
 ## The events
 
 The answer is `text/event-stream`, each event an `event:` line and one `data:` line of JSON:
@@ -29,7 +31,7 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | `text` | `{ text }` | a piece of the answer, as it is generated, in order |
 | `cite` | `{ id, title, type, url }` | a tool answered with one entity; the widget links it |
 | `done` | `{ model, spent, dayLeft }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share |
-| `error` | `{ error: { code, message } }` | the last event when a refusal arrives after the stream began; today only `host_down` |
+| `error` | `{ error: { code, message } }` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 
 ## The codes
 
@@ -40,13 +42,14 @@ A refusal decided before the stream is JSON, `{ error: { code, message } }`, wit
 | `bad_request` | 400 | the body is not JSON, or not the shape above, or the header is missing |
 | `too_long` | 400 | a message is over 1,000 characters |
 | `foreign` | 403 | the page's origin is not one the deployment named |
-| `busy` | 429 | this address has sent twenty messages this hour |
+| `busy` | 429 | this address has sent twenty messages this hour, or the model is at the project's rate for the minute |
 | `over_day` | 429 | today's share of the ceiling is spent |
 | `over_month` | 429 | this month's ceiling is spent |
+| `internal` | 500 | an error that is not a refusal; before the stream it is this JSON, after the stream began it is the last event |
 | `host_down` | 502 | the MCP host did not answer |
 | `closed` | 503 | the owner switched the chat off |
 
-A body over 64 KiB is refused with status 413 and a plain-text body, not the JSON shape, because it is refused before anything is read.
+A body over 64 KiB is refused with status 413 and a plain-text body, not the JSON shape, because it is refused before or while it is read: the `Content-Length` decides it where there is one, and otherwise the bytes are counted as they arrive and the request is dropped when they pass the cap.
 
 ## The meter's unit
 

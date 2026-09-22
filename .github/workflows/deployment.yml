@@ -90,9 +90,18 @@ jobs:
         env:
           IMAGE: ${{ needs.build.outputs.image }}
         run: terraform apply -input=false -auto-approve -var "image=$IMAGE"
+      # The live GET is the deploy's proof, so it is read against everything chat.json states and
+      # not against the MCP URL alone: an origin or a ceiling that did not reach the service is a
+      # deployment that answers the wrong pages or spends the wrong sum.
       - if: github.event_name == 'push'
         run: |
           URL=$(terraform output -raw service_url)
-          WANT=$(jq -r .mcp_url ../../chat/chat.json)
-          GOT=$(curl -fsS --retry 10 --retry-all-errors --retry-delay 5 --max-time 30 "$URL/chat" | jq -r .mcp_url)
-          echo "reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
+          curl -fsS --retry 10 --retry-all-errors --retry-delay 5 --max-time 30 "$URL/chat" > live.json
+          for field in mcp_url month_tokens; do
+            WANT=$(jq -r ".$field" ../../chat/chat.json)
+            GOT=$(jq -r ".$field" live.json)
+            echo "$field: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
+          done
+          WANT=$(jq -c .origins ../../chat/chat.json)
+          GOT=$(jq -c .origins live.json)
+          echo "origins: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
