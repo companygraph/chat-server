@@ -169,3 +169,17 @@ test("the other paths: the page, health, 404, 405, and the host check", async ()
   assert.equal((await raw(held, "/", { host: "chat.site.test" })).status, 200);
   assert.equal((await raw(held, "/", { host: "evil.test" })).status, 421);
 });
+
+test("a null body is a refusal with a code, not an internal error", async () => {
+  const base = await listen();
+  const r = await post(base, "null");
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error.code, "bad_request");
+});
+
+test("the page answers even when no site is named and the forwarded host is not an address", async () => {
+  const base = await listen({ cfg: config({ origins: [] }) });
+  const r = await raw(base, "/", { "x-forwarded-host": "%" });
+  assert.equal(r.status, 200);
+  assert.match(r.body, /main class="shell"/);
+});
