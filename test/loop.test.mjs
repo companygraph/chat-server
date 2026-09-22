@@ -2,7 +2,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { answer } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { Meter, MemoryStore } from "../lib/meter.mjs";
+import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
 import { startFixtureHost, EXAMPLE_ROOT } from "./helpers.mjs";
 
@@ -140,4 +140,62 @@ test("only the window reaches the model", async () => {
   assert.equal(model.requests[0].messages.length, 7);
   assert.equal(model.requests[0].messages[0].content, "t14");
   assert.equal(model.requests[0].messages[0].role, "user");
+});
+
+// A meter the calls can be counted against: the real one, with every reserve and settle tallied.
+const counting = (m) => ({
+  calls: { reserve: 0, settle: 0 },
+  get dayShare() { return m.dayShare; },
+  state: () => m.state(),
+  reserve(estimate) { this.calls.reserve += 1; return m.reserve(estimate); },
+  settle(estimate, actual) { this.calls.settle += 1; return m.settle(estimate, actual); },
+});
+
+test("every call is reserved and settled on its own, so a three-call message is three of each", async () => {
+  const m = counting(meter());
+  const model = fakeModel([toolTurn("list_types", {}), toolTurn("list_types", {}), textTurn("It is the company.")]);
+  const { events, emit } = collect();
+  const r = await answer({ host, model, meter: m }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit);
+  assert.equal(model.requests.length, 3);
+  assert.equal(m.calls.reserve, 3);
+  assert.equal(m.calls.settle, 3);
+  assert.equal(r.spent, 3 * (1000 + 500));
+  assert.equal((await m.state()).dayTokens, r.spent);
+  assert.equal(events.at(-1)[0], "done");
+});
+
+test("a day's share that fits one call refuses the second, and the first call's cost is all that stands", async () => {
+  // The share is one estimate exactly: the first reserve fits, and once it is settled at what
+  // the call really cost the second no longer does.
+  const m = new Meter(new MemoryStore(), { monthTokens: 10 * ESTIMATE });
+  const model = fakeModel([toolTurn("list_types", {}, "Looking…"), textTurn("never")]);
+  const { events, emit } = collect();
+  await assert.rejects(
+    () => answer({ host, model, meter: m }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit),
+    (e) => e.code === "over_day",
+  );
+  assert.equal(model.requests.length, 1);
+  assert.deepEqual(events.map(([e]) => e), ["text"]);
+  assert.equal((await m.state()).dayTokens, 1000 + 500, "the refused reserve added nothing");
+});
+
+test("an answer the output limit cut says so in done, and one that ended on its own says nothing", async () => {
+  const model = fakeModel([{ content: [{ type: "text", text: "It began to say" }], stop_reason: "max_tokens", usage }]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit);
+  assert.equal(events.at(-1)[0], "done");
+  assert.equal(events.at(-1)[1].cut, true);
+  const whole = collect();
+  await answer({ host, model: fakeModel([textTurn("All of it.")]), meter: meter() }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, whole.emit);
+  assert.equal("cut" in whole.events.at(-1)[1], false);
+});
+
+test("an entity fetched in two rounds is cited once", async () => {
+  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  const model = fakeModel([toolTurn("get_entity", { id: rootId }), toolTurn("get_entity", { id: rootId }), textTurn("It is the company.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit);
+  const cites = events.filter(([e]) => e === "cite");
+  assert.equal(cites.length, 1);
+  assert.equal(cites[0][1].id, rootId);
 });

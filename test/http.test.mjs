@@ -192,3 +192,32 @@ test("the page answers even when no site is named and the forwarded host is not 
   assert.equal(r.status, 200);
   assert.match(r.body, /main class="shell"/);
 });
+
+test("a body with no length is counted as it arrives, cut off at the cap, and the server answers on", async () => {
+  // Node's fetch always sends a Content-Length, so only the header branch of the cap is reached
+  // over it; a chunked request with no length is what makes the counting branch run.
+  const base = await listen();
+  const u = new URL(base);
+  const status = await new Promise((resolve, reject) => {
+    const req = http.request({
+      host: u.hostname, port: u.port, path: "/chat", method: "POST",
+      headers: { "content-type": "application/json", origin: "https://site.test", "x-chat": "1", "transfer-encoding": "chunked" },
+    }, (res) => { res.resume(); resolve(res.statusCode); });
+    // The server drops the request where the cap is passed, so the writes after it land in a
+    // socket that is gone; that is the point of the test and not a failure of it.
+    req.on("error", () => {});
+    req.on("close", () => reject(new Error("the request closed with no answer")));
+    const chunk = "x".repeat(8 * 1024);
+    let sent = 0;
+    const write = () => {
+      while (sent <= MAX_BODY_BYTES) {
+        sent += chunk.length;
+        if (!req.write(chunk)) { req.once("drain", write); return; }
+      }
+      req.end();
+    };
+    write();
+  });
+  assert.equal(status, 413);
+  assert.equal((await fetch(`${base}/health`)).status, 200);
+});

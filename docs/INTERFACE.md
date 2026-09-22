@@ -29,8 +29,8 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | Event | Data | When |
 | --- | --- | --- |
 | `text` | `{ text }` | a piece of the answer, as it is generated, in order |
-| `cite` | `{ id, title, type, url }` | a tool answered with one entity; the widget links it |
-| `done` | `{ model, spent, dayLeft }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share |
+| `cite` | `{ id, title, type, url }` | a tool answered with one entity; the widget links it, and an entity fetched again in a later round is not cited twice |
+| `done` | `{ model, spent, dayLeft, cut }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not |
 | `error` | `{ error: { code, message } }` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 
 ## The codes
