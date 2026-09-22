@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, params, vertexModel, asChatError } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, params, vertexModel, anthropicModel, modelFor, asChatError } from "../lib/model.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -45,6 +45,15 @@ test("a Vertex model is built from a project and a region and exposes turn", () 
   const m = vertexModel({ project: "p", region: "eu" });
   assert.equal(m.name, MODEL);
   assert.equal(typeof m.turn, "function");
+});
+
+test("an Anthropic model is built from a key and exposes turn, and the chooser reads the config", () => {
+  const a = anthropicModel({ apiKey: "sk-ant-test" });
+  assert.equal(a.name, MODEL);
+  assert.equal(typeof a.turn, "function");
+  const base = { project: "p", region: "eu", anthropicKey: null };
+  assert.equal(modelFor(base).provider, "vertex");
+  assert.equal(modelFor({ ...base, anthropicKey: "sk-ant-test" }).provider, "anthropic");
 });
 
 test("the minute's rate from the model is busy, and any other error is what it was", () => {

@@ -24,7 +24,7 @@ after(async () => { await host.close(); await fixture.close(); });
 const usage = { input_tokens: 10, output_tokens: 1 };
 const scripted = (...texts) => ({ name: "fake", async turn(req, onText) { const t = texts.shift() ?? "…"; onText(t); return { content: [{ type: "text", text: t }], stop_reason: "end_turn", usage }; } });
 
-const config = (over = {}) => ({ mcpUrl: host.url, origins: ["https://site.test"], hosts: null, monthTokens: 1_000_000, project: "p", region: "eu", proxyHops: 1, port: 0, meter: "memory", ...over });
+const config = (over = {}) => ({ mcpUrl: host.url, origins: ["https://site.test"], hosts: null, monthTokens: 1_000_000, project: "p", region: "eu", proxyHops: 1, port: 0, meter: "memory", anthropicKey: null, provider: "vertex", ...over });
 
 async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), opts = {} } = {}) {
   const server = createHttpServer({ config: cfg, host, model, meter, bucket }, opts);
@@ -51,6 +51,7 @@ test("GET /chat says what the chat is and spends nothing", async () => {
   assert.equal(r.headers.get("cache-control"), "no-store");
   const c = await r.json();
   assert.equal(c.model, "claude-sonnet-5");
+  assert.equal(c.provider, "vertex");
   assert.deepEqual(c.origins, ["https://site.test"]);
   assert.equal(c.mcp_url, host.url);
   assert.equal(c.provenance.commit, COMMIT);

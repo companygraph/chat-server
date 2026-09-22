@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { vertexModel } from "../lib/model.mjs";
+import { modelFor } from "../lib/model.mjs";
 import { Meter, MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/firestore.mjs";
 import { Bucket } from "../lib/bucket.mjs";
@@ -18,6 +18,7 @@ const ICON_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "imag
 
 const fakeModel = {
   name: "fake",
+  provider: "fake",
   async turn(request, onText) {
     const text = "This is a local run without a model; the host answered the handshake and nothing was asked of it.";
     onText(text);
@@ -38,12 +39,12 @@ try {
     pageIcon = `data:${type};base64,${fs.readFileSync(values["page-icon"]).toString("base64")}`;
   }
   const host = await connectHost(config.mcpUrl);
-  const model = values.model === "fake" ? fakeModel : vertexModel({ project: config.project, region: config.region });
+  const model = values.model === "fake" ? fakeModel : modelFor(config);
   const store = config.meter === "memory" ? new MemoryStore() : new FirestoreStore();
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
-    console.log(`companygraph-chat-http on :${this.address().port}, host ${config.mcpUrl} at ${host.provenance?.commit ?? "(none)"}, model ${model.name}, meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`);
+    console.log(`companygraph-chat-http on :${this.address().port}, host ${config.mcpUrl} at ${host.provenance?.commit ?? "(none)"}, model ${model.name} via ${model.provider}, meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`);
   });
 } catch (err) {
   console.error(err.message);

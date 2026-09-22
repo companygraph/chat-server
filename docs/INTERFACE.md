@@ -8,7 +8,7 @@ What a page's widget, or any client, may rely on: the routes, the request, the e
 | --- | --- | --- |
 | `/` | GET, HEAD | a page saying what the chat is, which site opens it, which host it reads and at which commit |
 | `/health` | GET | `{ ok: true, host }`, `host` the MCP host's provenance as last read |
-| `/chat` | GET | what the chat is, without spending a token: `model`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
+| `/chat` | GET | what the chat is, without spending a token: `model`, `provider`, `vertex` or `anthropic`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
 | `/chat` | OPTIONS | the preflight, `204` for an origin the deployment named and `403` for another |
 | `/chat` | POST | a message, answered as a stream of events |
 

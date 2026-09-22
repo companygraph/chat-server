@@ -37,3 +37,12 @@ test("hosts unset means any, and the meter and hops can be set", () => {
   assert.equal(c.proxyHops, 2);
   assert.equal(c.port, 9090);
 });
+
+test("a key names the provider; none means Vertex", () => {
+  assert.equal(configFromEnv(full).provider, "vertex");
+  assert.equal(configFromEnv(full).anthropicKey, null);
+  const c = configFromEnv({ ...full, ANTHROPIC_API_KEY: " sk-ant-test " });
+  assert.equal(c.anthropicKey, "sk-ant-test");
+  assert.equal(c.provider, "anthropic");
+  assert.equal(configFromEnv({ ...full, ANTHROPIC_API_KEY: "  " }).provider, "vertex", "a blank key is no key");
+});

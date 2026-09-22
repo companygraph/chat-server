@@ -30,6 +30,7 @@
     "test": "node --test 'test/*.test.mjs'"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.127.0",
     "@anthropic-ai/vertex-sdk": "^0.19.10",
     "@google-cloud/firestore": "^7.11.0",
     "@modelcontextprotocol/client": "^2.0.0"
