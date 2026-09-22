@@ -65,12 +65,7 @@ jobs:
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
-      # A pull request plans as terraform-plan@, which may read the state bucket and write nothing
-      # in it, and init takes a lock on the state it reads. The host's state exists, so its init
-      # reads without writing; the chat's first plan meets a prefix with no state yet and init
-      # tries to write the lock file, which the plan identity may not. No lock on a pull request,
-      # then: it plans and changes nothing, and the apply on main locks as it always did.
-      - run: terraform init -input=false -lock=${{ github.event_name == 'pull_request' && 'false' || 'true' }}
+      - run: terraform init -input=false
       - run: terraform fmt -check -recursive
       - run: terraform validate
       - if: github.event_name == 'pull_request'
