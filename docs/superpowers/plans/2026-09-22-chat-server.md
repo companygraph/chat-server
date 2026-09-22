@@ -1506,12 +1506,22 @@ git log -1 --format='[%s]'
 ```js
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { createHttpServer } from "../lib/http.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
 import { MAX_BODY_BYTES } from "../lib/shape.mjs";
 import { startFixtureHost, COMMIT } from "./helpers.mjs";
+
+const raw = (base, path, headers) => new Promise((resolve, reject) => {
+  const u = new URL(base);
+  http.get({ host: u.hostname, port: u.port, path, headers }, (res) => {
+    let body = "";
+    res.on("data", (d) => { body += d; });
+    res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body }));
+  }).on("error", reject);
+});
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
@@ -1649,17 +1659,21 @@ test("a host that is gone before any text is a JSON refusal, and gone mid-stream
 });
 
 test("the other paths: the page, health, 404, 405, and the host check", async () => {
-  const base = await listen({ cfg: config({ hosts: ["chat.site.test"] }) });
+  const base = await listen();
   assert.equal((await fetch(`${base}/nothing`)).status, 404);
   assert.equal((await fetch(`${base}/chat`, { method: "DELETE" })).status, 405);
   const h = await fetch(`${base}/health`);
   assert.equal(h.status, 200);
   assert.equal((await h.json()).host.commit, COMMIT);
-  assert.equal((await fetch(`${base}/`, { headers: { host: "chat.site.test" } })).status, 200);
-  assert.equal((await fetch(`${base}/`, { headers: { host: "evil.test" } })).status, 421);
-  const page = await fetch(`${base}/`, { headers: { host: "chat.site.test" } });
+  const page = await fetch(`${base}/`);
+  assert.equal(page.status, 200);
   assert.match(page.headers.get("content-type"), /^text\/html/);
   assert.match(await page.text(), /main class="shell"/);
+  // Node's fetch sends its own Host whatever the caller sets, so the host check is exercised
+  // over a raw request.
+  const held = await listen({ cfg: config({ hosts: ["chat.site.test"] }) });
+  assert.equal((await raw(held, "/", { host: "chat.site.test" })).status, 200);
+  assert.equal((await raw(held, "/", { host: "evil.test" })).status, 421);
 });
 ```
 
