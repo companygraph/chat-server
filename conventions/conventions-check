@@ -1,0 +1,159 @@
+#!/bin/sh
+# conventions-check — hold a member's own Markdown to WRITING.md: American English and the
+# spaced em-dash. Fenced code and inline code are not prose and are dropped before the scan;
+# folders under "exclude" in conventions.json are someone else's prose and are not read, nor is
+# anything git ignores, which the shared job never sees either.
+#
+#   sh conventions/conventions-check     exit 1 with one ✗ line per hit, file:line: word
+#
+# Needs sh, awk, sed, grep and find. git is asked for the member's identity and for what it
+# ignores when it is there, and skipped when it is not. CONVENTIONS_ROOT overrides the directory
+# scanned and CONVENTIONS_REPO the identity read, which is how the tests point it at a fixture.
+set -eu
+
+ROOT=${CONVENTIONS_ROOT:-.}
+
+# The scan is run from the root, as conventions-format is and for the same reason: git resolves a
+# path against the directory it runs in, so a relative root handed to check-ignore would be
+# counted twice and the filter below would quietly match nothing. The name the caller gave is
+# kept for the one message that names it.
+NAMED=$ROOT
+cd "$ROOT" 2> /dev/null || { echo "✗ conventions: no Markdown file was scanned under $NAMED" >&2; exit 1; }
+ROOT=.
+PIN=$ROOT/conventions.json
+
+# Stems, not words, so derived forms are caught; a stem is anchored wherever an American word
+# contains it, and the list is edited when one is found. This is the list: WRITING.md forbids
+# British spelling without quoting one. A stem that is also the start of an American word —
+# fulfil in fulfill, enrol in enroll, grey in greyhound, analyse in analyses — ends with
+# ([^a-z]|$) instead of \b, which BSD and GNU awk read alike; \b does not travel. organism,
+# optimist, de minimis and initialism are American, so those four stems are anchored the same
+# way but on the letter that follows, since British and American diverge right there. Case is
+# folded by lowering the line before matching, not by the pattern, since IGNORECASE is a GNU
+# extension awk on macOS does not have.
+STEMS='organis(e|a|i)|colour|behaviour|centre|licence|recognis|modelling|catalogue|grey([^a-z]|$)|judgement|artefact|whilst|amongst|favour|honour|analys(e|ed|ing)([^a-z]|$)|optimis(e|a|i)|normalis|serialis|initialis(e|a|i)|visualis|minimis(e|a|i)|prioritis|customis|summaris|categoris|parameteris|rasteris|unrecognis|cancelled|travelled|labelled|aluminium|instalment|neighbour|totalled|defence|offence|programmes?([^a-z]|$)|fulfil([^a-z]|$)|enrol([^a-z]|$)|skilful|ageing|cosy([^a-z]|$)|focuss|cheque([^a-z]|$)|tyre([^a-z]|$)|kerb([^a-z]|$)|storey|mould|plough|draught|sceptic|generalis(e|ed|es|ing|ation|ations)|specialis(e|ed|es|ing|ation)|realis(e|ed|es|ing|ation)|materialis(e|ed|es|ing|ation)|penalis(e|ed|es|ing|ation)|singularis(e|ed|es|ing|ation)|authoris(e|ed|es|ing|ation)|emphasis(e|ed|es|ing)|criticis(e|ed|es|ing)|capitalis(e|ed|es|ing|ation)|formalis(e|ed|es|ing|ation)|finalis(e|ed|es|ing|ation)|stabilis(e|ed|es|ing|ation)|utilis(e|ed|es|ing|ation)|harmonis(e|ed|es|ing|ation)|standardis(e|ed|es|ing|ation)|synchronis(e|ed|es|ing|ation)|mobilis(e|ed|es|ing|ation)|memoris(e|ed|es|ing|ation)|apologis(e|ed|es|ing)|synthesis(e|ed|es|ing)|hypothesis(e|ed|es|ing)|paralys(e|ed|es|ing)|catalys(e|ed|es|ing)|modelled|modeller|flavour|harbour|labour|rumour|humour|vigour|rigour|armour|endeavour|savour|odour|valour|metre([^a-z]|$)|metres|litre|fibre|theatre|calibre|travelling|signalling|cancelling|fuelled|levelled|channelled|counsellor|marvellous|jewellery'
+DASH='[^ ]—|—[^ ]'
+
+# The exclude list: every quoted string inside the "exclude": [ ... ] array, one per line, so
+# an entry that carries a space stays one entry through the sed and the loop below.
+excludes=""
+if [ -f "$PIN" ]; then
+  excludes=$(tr -d '\n' < "$PIN" | sed -n 's/.*"exclude" *: *\[\([^]]*\)\].*/\1/p' | tr ',' '\n' | sed -n 's/^[^"]*"\([^"]*\)".*/\1/p')
+fi
+
+# find, with .git and every excluded prefix pruned. The prune list is built as arguments; IFS
+# is newline-only for the loop, so an entry with a space in it is one word, not two.
+set -- "$ROOT" -path "$ROOT/.git" -prune -o
+oldifs=$IFS
+IFS='
+'
+for e in $excludes; do
+  set -- "$@" -path "$ROOT/${e%/}" -prune -o
+done
+IFS=$oldifs
+set -- "$@" -name '*.md' -type f -print
+
+# The files the walk visits. Listed once so an empty result — a root that does not exist
+# included, since find then errors and prints nothing on stdout — is caught before the scan
+# reports a bare ✓ for a tree it never opened.
+files=$(find "$@" 2> /dev/null | LC_ALL=C sort || true)
+
+# What git ignores is scratch, not the repository's prose, for the reason conventions-format
+# gives: it is absent from the shared job, which checks out tracked files only, so a local run
+# that read it would report hits no reviewer can act on. A file that is merely new is still
+# read. check-ignore echoes each path back as it was handed over, so the list stays in the
+# walk's own spelling and nothing has to be rebuilt from it.
+# core.quotePath is off because git C-quotes a path with a non-ASCII byte in it — a de-CH file
+# name with an umlaut — and a quoted path matches nothing in the list it came from.
+if command -v git > /dev/null 2>&1 && git rev-parse --git-dir > /dev/null 2>&1; then
+  ignored=$(printf '%s\n' "$files" | git -c core.quotePath=false check-ignore --stdin 2> /dev/null) || ignored=""
+  [ -z "$ignored" ] || files=$(printf '%s\n' "$files" | grep -vxF "$ignored" || true)
+fi
+
+if [ -z "$files" ]; then
+  echo "✗ conventions: no Markdown file was scanned under $NAMED" >&2
+  exit 1
+fi
+
+hits=$(printf '%s\n' "$files" | while IFS= read -r f; do
+  # Drop fenced code and inline code, then scan what is left of each line for a stem or a
+  # closed dash; the match is against the line's own content, never the path awk read it from.
+  # A fence left open at end of file is a hit of its own, not a silent skip of the rest.
+  awk -v stems="$STEMS" -v dash="$DASH" -v root="$ROOT" '
+    function relpath(  p, prefix) {
+      p = FILENAME
+      prefix = root "/"
+      if (index(p, prefix) == 1) p = substr(p, length(prefix) + 1)
+      return p
+    }
+    /^```/ { fence = !fence; next }
+    fence  { next }
+    {
+      line = $0
+      sub(/\r$/, "", line)
+      gsub(/`[^`]*`/, "", line)
+      low = tolower(line)
+      if (match(low, stems)) {
+        w = substr(low, RSTART, RLENGTH)
+        sub(/[^a-z]$/, "", w)
+        printf "✗ %s:%d: %s\n", relpath(), FNR, w
+      }
+      if (match(line, dash)) printf "✗ %s:%d: closed em-dash\n", relpath(), FNR
+    }
+    END { if (fence) printf "✗ %s:%d: unclosed code fence\n", relpath(), FNR }
+  ' "$f"
+done)
+
+# --- the README title ------------------------------------------------------------------------
+# The two tripwires above are properties of a line; this one is a property of the repository, so
+# it runs once, after the walk. The identity is not in conventions.json: the "repo" there names
+# where the vendored files come from, robertblust/conventions, and reads the same in every
+# member. So it is the runner's GITHUB_REPOSITORY, else the origin remote of a checkout whose
+# own root is the tree being scanned — an ancestor's remote would answer for a repository the
+# scan never opened — and CONVENTIONS_REPO overrides both. No identity, no row and no vendored
+# list are each a quiet pass with its reason: a worktree, a fixture and a repository outside the
+# family are not failures of the prose, and a tripwire that fails there fails for a reason that
+# has nothing to do with the change under it.
+LIST=$ROOT/conventions/REPOSITORIES.md
+README=$ROOT/README.md
+title_hit=""
+
+self=${CONVENTIONS_REPO:-${GITHUB_REPOSITORY:-}}
+if [ -z "$self" ] && [ -e "$ROOT/.git" ]; then
+  self=$(git -C "$ROOT" remote get-url origin 2>/dev/null || true)
+  self=$(printf '%s' "$self" | sed -e 's/\.git$//' -e 's#.*[:/]\([^/][^/]*/[^/][^/]*\)$#\1#')
+fi
+
+if [ -z "$self" ]; then
+  echo "· conventions: no repository identity here, so the README title is not checked"
+elif [ ! -f "$LIST" ]; then
+  echo "· conventions: no conventions/REPOSITORIES.md here, so the README title is not checked"
+else
+  # The row is found on its first cell and the title is its second. A separator row and a
+  # heading never carry an owner/repo in that cell, so neither can match.
+  want=$(awk -F'|' -v repo="$self" '
+    /^\|/ {
+      name = $2; gsub(/^[ \t]+|[ \t]+$/, "", name)
+      if (name == repo) { t = $3; gsub(/^[ \t]+|[ \t]+$/, "", t); print t; exit }
+    }' "$LIST")
+  if [ -z "$want" ]; then
+    echo "· conventions: $self is not in REPOSITORIES.md, so the README title is not checked"
+  elif [ ! -f "$README" ]; then
+    title_hit="✗ README.md: $self is in REPOSITORIES.md and has no README.md"
+  else
+    # Whole lines are compared, the "# " included, so a first line that is not a heading is told
+    # apart from the title it otherwise matches. Trailing whitespace and a CR are dropped
+    # because neither is visible to the reader the title is for.
+    first=$(sed -n '1p' "$README" | sed -e 's/\r$//' -e 's/[[:space:]]*$//')
+    if [ "$first" != "# $want" ]; then
+      title_hit="✗ README.md:1: first line is \"$first\", REPOSITORIES.md asks for \"# $want\""
+    fi
+  fi
+fi
+
+if [ -n "$hits" ] || [ -n "$title_hit" ]; then
+  if [ -n "$hits" ]; then echo "$hits"; fi
+  if [ -n "$title_hit" ]; then echo "$title_hit"; fi
+  exit 1
+fi
+echo "✓ every Markdown file follows WRITING.md"
