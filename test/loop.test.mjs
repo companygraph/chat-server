@@ -75,12 +75,15 @@ test("a fifth round is not made: the last request forbids a tool call", async ()
 });
 
 test("a tool answer over the cap reaches the model cut, with the line", async () => {
-  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
-  const model = fakeModel([toolTurn("get_entity", { id: rootId }), textTurn("ok")]);
-  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "big" }], lang: "en" }, collect().emit);
+  // The fixture's entities are small, so the host is wrapped to answer one call with a text
+  // over the cap; the loop must cut it and say so.
+  const big = { ...host, call: async (name, args) => ({ ...(await host.call(name, args)), text: "a".repeat(MAX_TOOL_RESULT_CHARS * 2) }) };
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  await answer({ host: big, model, meter: meter() }, { messages: [{ role: "user", content: "big" }], lang: "en" }, collect().emit);
   const result = model.requests[1].messages.at(-1).content[0].content;
-  assert.ok(result.length <= MAX_TOOL_RESULT_CHARS + 200);
-  if (result.length > MAX_TOOL_RESULT_CHARS) assert.match(result, /truncated at/);
+  assert.ok(result.startsWith("a".repeat(MAX_TOOL_RESULT_CHARS)));
+  assert.ok(result.length < MAX_TOOL_RESULT_CHARS + 200);
+  assert.match(result, /truncated at 16000 characters/);
 });
 
 test("a refused tool call goes back as an error result and the loop goes on", async () => {
