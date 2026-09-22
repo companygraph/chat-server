@@ -6,7 +6,7 @@ The design is [`docs/superpowers/specs/2026-09-22-chat-server-design.md`](docs/s
 
 ## What it does
 
-`POST /chat` takes the conversation and answers a stream of events: the text as it is generated, a `cite` for every entity a tool returned, and `done` with what the message cost. The model runs at most four tool rounds a message over the host's own tools, with the host's own instructions as the start of its prompt and a few rules after them: every claim from a tool, every claim naming its entity, the model does not say where it does not.
+`POST /chat` takes the conversation and answers a stream of events: the text as it is generated, a `cite` for every entity a tool returned, and `done` with what the message cost. The model runs at most four tool rounds a message over the host's own tools, with the host's own instructions as the start of its prompt and a few rules after them: every claim from a tool, every claim naming its entity, the model does not say where it does not, it writes a Markdown subset the widget renders, paragraphs, emphasis, code spans, lists and tables, and nothing else, and it answers every question about the model through a tool.
 
 `/` is a page for whoever types the host into a browser, built as the MCP host's own page is built, from the model's own words, and styled by the deployment's stylesheet.
 

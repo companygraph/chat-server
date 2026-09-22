@@ -199,3 +199,13 @@ test("an entity fetched in two rounds is cited once", async () => {
   assert.equal(cites.length, 1);
   assert.equal(cites[0][1].id, rootId);
 });
+
+test("find_evidence answers a skill, not an entity, and it is cited", async () => {
+  const skillId = (await host.call("list_entities", { type: "skill", limit: 1 })).data.entities[0].id;
+  const model = fakeModel([toolTurn("find_evidence", { skill: skillId }), textTurn("It rests on that skill.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "what evidence backs it?" }], lang: "en" }, emit);
+  const cites = events.filter(([e]) => e === "cite");
+  assert.equal(cites.length, 1);
+  assert.equal(cites[0][1].id, skillId);
+});

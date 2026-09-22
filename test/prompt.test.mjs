@@ -11,6 +11,8 @@ test("the prompt is the host's instructions, then the rules, then the language",
   assert.match(systemPrompt("x", "en"), /Answer in English/);
   assert.equal(RULES.at(-1), "Call a tool without a preface; write only the answer.");
   assert.deepEqual(LANGS, ["en", "de"]);
+  assert.ok(RULES.some((r) => r.startsWith("Write Markdown of this subset")), "the Markdown rule is missing");
+  assert.ok(RULES.some((r) => r.startsWith("Every question about this model is answered through a tool")), "the tool rule is missing");
 });
 
 test("a language the widget does not send falls back to English", () => {
