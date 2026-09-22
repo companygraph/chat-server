@@ -17,8 +17,9 @@ export function registerConfigTests() {
     assert.ok(Number.isInteger(c.month_tokens) && c.month_tokens > 0);
   });
 
-  test("the host it reads is this deployment's own MCP host", () => {
+  test("the host it reads is this deployment's own, and the chat's site is not the host's site", () => {
     assert.equal(new URL(c.mcp_url).host, deployment.domain);
     assert.equal(new URL(c.mcp_url).pathname, "/mcp");
+    assert.notEqual(c.site_id, deployment.site_id, "two Hosting sites in one project must differ, or the chat's apply takes the host's site");
   });
 }

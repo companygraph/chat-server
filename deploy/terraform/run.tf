@@ -26,7 +26,9 @@ resource "google_cloud_run_v2_service" "chat" {
   template {
     service_account                  = google_service_account.chat.email
     max_instance_request_concurrency = 20
-    timeout                          = "120s"
+    # A message is at most five model calls of sixty seconds each, and a request cut off part way
+    # through one is a visitor left with half an answer.
+    timeout = "300s"
     scaling {
       min_instance_count = 0
       max_instance_count = 3
@@ -58,6 +60,9 @@ resource "google_cloud_run_v2_service" "chat" {
         name  = "CHAT_PROJECT"
         value = var.project
       }
+      # The Vertex endpoint, not the region the service runs in: the design puts the model on the
+      # Europe multi-region, which var.region names no part of, and the two differ on purpose. It
+      # becomes an input of its own the day a deployment needs another endpoint.
       env {
         name  = "CHAT_REGION"
         value = "eu"
