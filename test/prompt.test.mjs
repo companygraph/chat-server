@@ -21,6 +21,7 @@ test("the prompt is the host's instructions, then the types, then the rules, the
   assert.ok(RULES.some((r) => r.includes("list_entities with that type")), "the list-a-type rule is missing");
   assert.ok(RULES.some((r) => r.includes("search with match \"words\"") && r.includes("tried again with fewer words")), "the words-mode rule is missing");
   assert.ok(!RULES.some((r) => r.includes("Search before you fetch")), "the search-first rule is gone");
+  assert.ok(RULES.some((r) => r.startsWith("A question about this chat") && r.includes("answered through the tools like any other") && r.includes("about neither this model nor this chat")), "the chat-is-in-the-model rule is missing");
 });
 
 test("the type map is one sentence naming each type with its count and owner, and nothing when the host lists none", () => {
