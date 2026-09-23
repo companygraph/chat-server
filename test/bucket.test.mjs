@@ -2,14 +2,21 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Bucket, clientAddress } from "../lib/bucket.mjs";
 
-test("twenty an hour per address, then no more until an hour has passed", () => {
-  let t = 0;
+// The window slides: the twenty-first message waits until the oldest of the last twenty is an
+// hour old, seconds or the whole hour, and the bucket is the one thing that knows which. Its
+// refusal is that moment, so the route can say it rather than guess.
+test("twenty an hour per address, then the moment the oldest leaves the window, then one more", () => {
+  let t = 1000;
   const b = new Bucket({ perHour: 20, now: () => t });
-  for (let i = 0; i < 20; i++) assert.equal(b.take("a"), true);
-  assert.equal(b.take("a"), false);
+  for (let i = 0; i < 20; i++) { assert.equal(b.take("a"), true); t += 1000; }
+  const refused = b.take("a");
+  assert.ok(refused instanceof Date, "a refusal is the moment, not false");
+  assert.equal(refused.toISOString(), new Date(1000 + 3600 * 1000).toISOString(), "the first hit leaves the window an hour after it");
   assert.equal(b.take("b"), true, "another address has its own bucket");
-  t = 3600 * 1000 + 1;
-  assert.equal(b.take("a"), true, "the hour has passed");
+  t = refused.getTime() - 1;
+  assert.ok(b.take("a") instanceof Date, "a moment before, still refused");
+  t = refused.getTime();
+  assert.equal(b.take("a"), true, "at the moment, allowed");
 });
 
 test("the address is the one before the trusted hops, or the socket's", () => {
