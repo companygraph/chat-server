@@ -48,6 +48,20 @@ test("the switch closes the chat without touching the counters", async () => {
   await assert.rejects(() => m.reserve(1), (e) => e.code === "closed");
 });
 
+// The day and the month are counted in UTC, so the day's refusal lifts at the next midnight
+// UTC and the month's on the first of the next month, computed from the meter's own clock and
+// never from the instance's.
+test("a spent day names the next midnight UTC and a spent month the first of the next month", async () => {
+  const day = new Meter(new MemoryStore(), { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  await day.reserve(100);
+  await assert.rejects(() => day.reserve(1), (e) => e.code === "over_day" && e.retryAt === "2026-09-23T00:00:00.000Z");
+  const month = new Meter(new MemoryStore(), { monthTokens: 100, now: at("2026-12-31T23:59:59Z") });
+  await assert.rejects(() => month.reserve(101), (e) => e.code === "over_month" && e.retryAt === "2027-01-01T00:00:00.000Z");
+  const closed = new Meter(new MemoryStore(), { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
+  await closed.store.transact((d) => ({ ...d, closed: true }));
+  await assert.rejects(() => closed.reserve(1), (e) => e.code === "closed" && !("retryAt" in e));
+});
+
 test("two reserves started together against a share that fits one: exactly one passes", async () => {
   const store = new MemoryStore();
   const m = new Meter(store, { monthTokens: 1000, now: at("2026-09-22T10:00:00Z") });
