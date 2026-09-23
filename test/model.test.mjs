@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, params, vertexModel, anthropicModel, modelFor, asChatError } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError } from "../lib/model.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -35,6 +35,23 @@ test("the final round keeps the tools listed and forbids another call", () => {
   const r = params({ system: "S", tools, messages: [], final: true });
   assert.equal(r.tools.length, 2);
   assert.deepEqual(r.tool_choice, { type: "none" });
+});
+
+test("the final round says so to the model: the note follows the last tool answer, and no other round carries it", () => {
+  const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }];
+  const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "tool_use", id: "a", name: "search", input: {} }] }, { role: "user", content: results }];
+  const r = params({ system: "S", tools, messages, final: true });
+  const last = r.messages.at(-1).content;
+  assert.equal(last.length, 2);
+  assert.equal(last[0].type, "tool_result");
+  assert.equal(last[0].cache_control, undefined);
+  assert.deepEqual(last[1], { type: "text", text: FINAL_NOTE, cache_control: { type: "ephemeral" } }, "the note is the newest block and carries the mark");
+  assert.equal(results.length, 1, "the caller's array is left alone");
+  assert.ok(!JSON.stringify(params({ system: "S", tools, messages }).messages).includes(FINAL_NOTE), "a round that may still call carries no note");
+  const s = params({ system: "S", tools, messages: [{ role: "user", content: "q" }], final: true });
+  assert.deepEqual(s.messages[0].content.map((b) => b.text), ["q", FINAL_NOTE], "a string message becomes two blocks");
+  assert.match(FINAL_NOTE, /No further tool/);
+  assert.match(FINAL_NOTE, /the model does not say/);
 });
 
 test("the weights are the model's price ratios", () => {

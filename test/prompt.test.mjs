@@ -20,6 +20,9 @@ test("the prompt is the host's instructions, then the types, then the rules, the
   assert.ok(RULES.some((r) => r.startsWith("Every question about this model is answered through a tool")), "the tool rule is missing");
   assert.ok(RULES.some((r) => r.includes("list_entities with that type")), "the list-a-type rule is missing");
   assert.ok(RULES.some((r) => r.includes("search with match \"words\"") && r.includes("tried again with fewer words")), "the words-mode rule is missing");
+  assert.ok(RULES.some((r) => r.includes("search with match \"words\"") && r.includes("put into English whatever the visitor's language") && r.includes("another English word for the same thing")), "the English-words rule is missing");
+  assert.ok(RULES.some((r) => r.includes("is not one of those words") && r.includes("owner set to that entity's id")), "the name-apart rule is missing");
+  assert.ok(RULES.some((r) => r.includes("a first name alone, never meets")), "the part-of-a-title rule is missing");
   assert.ok(!RULES.some((r) => r.includes("Search before you fetch")), "the search-first rule is gone");
   assert.ok(RULES.some((r) => r.startsWith("A question about this chat") && r.includes("answered through the tools like any other") && r.includes("about neither this model nor this chat")), "the chat-is-in-the-model rule is missing");
 });
