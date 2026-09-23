@@ -115,12 +115,30 @@ test("a body over the cap is refused before it is read", async () => {
   assert.equal(r.status, 413);
 });
 
-test("the twenty-first message from one address in an hour is busy", async () => {
+// The bucket knows the moment to the second; the response says it twice, in the body for the
+// widget and in the header for any other client, and the two agree. A refusal with no moment
+// carries neither, so a client is never told to wait for something that will not change.
+test("the twenty-first message from one address in an hour is busy, and says until when", async () => {
   const base = await listen({ model: scripted(...Array(25).fill("ok")) });
-  for (let i = 0; i < 20; i++) assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }] }, { "x-forwarded-for": "203.0.113.7, 35.0.0.1" })).status, 200);
-  const r = await post(base, { messages: [{ role: "user", content: "hi" }] }, { "x-forwarded-for": "203.0.113.7, 35.0.0.1" });
+  const from = { "x-forwarded-for": "203.0.113.7, 35.0.0.1" };
+  for (let i = 0; i < 20; i++) assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }] }, from)).status, 200);
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }] }, from);
   assert.equal(r.status, 429);
-  assert.equal((await r.json()).error.code, "busy");
+  const body = await r.json();
+  assert.equal(body.error.code, "busy");
+  assert.match(body.error.retryAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/, "an ISO time in UTC");
+  const wait = Number(r.headers.get("retry-after"));
+  assert.ok(Number.isInteger(wait) && wait >= 1, `Retry-After is whole seconds, never below one: ${r.headers.get("retry-after")}`);
+  const fromBody = Math.ceil((Date.parse(body.error.retryAt) - Date.now()) / 1000);
+  assert.ok(Math.abs(wait - fromBody) <= 1, `the header says ${wait}, the body ${fromBody}`);
+  assert.ok(wait <= 3600 && wait > 3590, `the bucket's hour: ${wait}`);
+  const gate = await fetch(`${base}/chat`, { headers: from });
+  assert.equal(gate.status, 429, "GET /chat is held by the same bucket");
+  assert.ok((await gate.json()).error.retryAt, "and says until when");
+  const foreign = await post(base, { messages: [{ role: "user", content: "hi" }] }, { origin: "https://other.test" });
+  assert.equal(foreign.status, 403);
+  assert.ok(!("retryAt" in (await foreign.json()).error), "a foreign page has no moment");
+  assert.equal(foreign.headers.get("retry-after"), null, "and no header");
 });
 
 test("a spent ceiling and a closed switch are refused before the stream", async () => {
@@ -130,11 +148,15 @@ test("a spent ceiling and a closed switch are refused before the stream", async 
   const base = await listen({ cfg, meter });
   const r = await post(base, { messages: [{ role: "user", content: "hi" }] });
   assert.equal(r.status, 429);
-  assert.equal((await r.json()).error.code, "over_month");
+  const spent = await r.json();
+  assert.equal(spent.error.code, "over_month");
+  assert.match(spent.error.retryAt, /T00:00:00\.000Z$/, "the first of the next month at midnight UTC");
+  assert.ok(Number(r.headers.get("retry-after")) >= 1);
   await meter.store.transact((d) => ({ ...d, closed: true }));
   const c = await post(base, { messages: [{ role: "user", content: "hi" }] });
   assert.equal(c.status, 503);
   assert.equal((await c.json()).error.code, "closed");
+  assert.equal(c.headers.get("retry-after"), null, "closed lifts when the owner says, so no header");
 });
 
 test("a host that is gone before any text is a JSON refusal, and gone mid-stream is the last event", async () => {
