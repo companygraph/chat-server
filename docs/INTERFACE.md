@@ -32,25 +32,27 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | `cite` | `{ id, title, type, url }`, `url` null where the host names no file | a tool answered with one entity, or evidence for one skill; the widget links it, and an entity cited already in this message is not cited twice |
 | `names` | `{ names: [{ id, title }] }` | every entity a list answer named, at most sixty a message, each once and never one the answer also cites; the widget links these names where the text writes them |
 | `done` | `{ model, spent, dayLeft, cut }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not |
-| `error` | `{ error: { code, message } }` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
+| `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 
 ## The codes
 
-A refusal decided before the stream is JSON, `{ error: { code, message } }`, with the status the table gives. The widget turns a code into a sentence in the visitor's language; the message is for a reader of the raw answer.
+A refusal decided before the stream is JSON, `{ error: { code, message } }`, with the status the table gives. The widget turns a code into a sentence in the visitor's language; the message is for a reader of the raw answer. A refusal for a limit that lifts by itself, `busy`, `over_day` or `over_month`, also carries `retryAt`, the moment it lifts as an ISO 8601 time in UTC, and the response carries `Retry-After`, the same moment in whole seconds from now, rounded up and never below one; every other code carries neither, since a bad request, a foreign origin, a closed chat and a host that did not answer have no moment.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
 | `bad_request` | 400 | the body is not JSON, or not the shape above, or the header is missing |
 | `too_long` | 400 | a message is over 1,000 characters |
 | `foreign` | 403 | the page's origin is not one the deployment named |
-| `busy` | 429 | this address has sent twenty messages this hour, or the model is at the project's rate for the minute |
-| `over_day` | 429 | today's share of the ceiling is spent |
-| `over_month` | 429 | this month's ceiling is spent |
+| `busy` | 429 | this address has sent twenty messages this hour, and `retryAt` is when the oldest of them is an hour old; or the model is at the project's rate for the minute, and `retryAt` is one minute on |
+| `over_day` | 429 | today's share of the ceiling is spent; `retryAt` is the next midnight UTC |
+| `over_month` | 429 | this month's ceiling is spent; `retryAt` is the first of the next month at midnight UTC |
 | `internal` | 500 | an error that is not a refusal; before the stream it is this JSON, after the stream began it is the last event |
 | `host_down` | 502 | the MCP host did not answer |
 | `closed` | 503 | the owner switched the chat off |
 
 A body over 64 KiB is refused with status 413 and a plain-text body, not the JSON shape, because it is refused before or while it is read: the `Content-Length` decides it where there is one, and otherwise the bytes are counted as they arrive and the request is dropped when they pass the cap.
+
+The moment is the truth of the instance that refused. The bucket is in memory per instance and a second instance counts an address on its own, so a visitor may find the chat open earlier than the moment says, and never later.
 
 ## The meter's unit
 

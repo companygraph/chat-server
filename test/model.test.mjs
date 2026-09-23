@@ -56,11 +56,12 @@ test("an Anthropic model is built from a key and exposes turn, and the chooser r
   assert.equal(modelFor({ ...base, anthropicKey: "sk-ant-test" }).provider, "anthropic");
 });
 
-test("the minute's rate from the model is busy, and any other error is what it was", () => {
+test("the minute's rate from the model is busy one minute from now, and any other error is what it was", () => {
   const rate = Object.assign(new Error("Too Many Requests"), { status: 429 });
-  const busy = asChatError(rate);
+  const busy = asChatError(rate, () => Date.UTC(2026, 8, 23, 14, 5, 0));
   assert.equal(busy.code, "busy");
   assert.equal(busy.status, 429);
+  assert.equal(busy.retryAt, "2026-09-23T14:06:00.000Z", "the quantum the quota is counted in");
   const other = Object.assign(new Error("boom"), { status: 500 });
   assert.equal(asChatError(other), other);
   const plain = new Error("no status");
