@@ -47,6 +47,15 @@ test("a call answers text and data, and a refusal is data with isError", async (
   assert.equal(typeof bad.data.error.code, "string");
 });
 
+// The rule that sends a search with match "words" needs a host that has the mode, which is the
+// server package from v0.26.0; a host below it refuses the value, and this holds the pin to it.
+test("a search by words is answered, with the words the host read", async () => {
+  const r = await host.call("search", { query: EXAMPLE_ROOT, match: "words" });
+  assert.equal(r.isError, false);
+  assert.ok(r.data.results.length > 0);
+  assert.ok(r.data.words.length > 0 && r.data.words.every((w) => typeof w.stem === "string" && typeof w.common === "boolean"));
+});
+
 test("a call answers with the host's provenance as this call reports it", async () => {
   host.provenance = null;
   const r = await host.call("list_types", {});
