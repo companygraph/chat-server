@@ -1,1 +1,1 @@
-{ "repo": "robertblust/conventions", "tag": "v1.28.0", "exclude": ["docs/superpowers", "node_modules", "test/fixtures"], "format-exclude": ["node_modules", "test/fixtures"] }
+{ "repo": "robertblust/conventions", "tag": "v1.29.0", "exclude": ["docs/superpowers", "node_modules", "test/fixtures"], "format-exclude": ["node_modules", "test/fixtures"] }
