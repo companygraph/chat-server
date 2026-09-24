@@ -21,6 +21,12 @@ export function exampleSnapshot() {
 // example company changes nothing here.
 export const EXAMPLE_ROOT = fs.readFileSync(path.join(fixtures, "example", "model", "identity.md"), "utf8").match(/^# (.+)$/m)[1];
 
+// The example's own questions (core 0.40.0), read from the fixture the same way EXAMPLE_ROOT is,
+// in the order `list_entities` serves them: by id, and an id sorts as its filename does. Titles,
+// not typed here, so a release that changes the example's wording changes nothing here either.
+const questionFiles = fs.readdirSync(path.join(fixtures, "example", "model", "questions")).filter((f) => f.endsWith(".md")).sort();
+export const QUESTION_TITLES = questionFiles.map((f) => fs.readFileSync(path.join(fixtures, "example", "model", "questions", f), "utf8").match(/^# (.+)$/m)[1]);
+
 export async function startFixtureHost() {
   const server = createHttpServer(exampleSnapshot());
   await new Promise((r) => server.listen(0, "127.0.0.1", r));

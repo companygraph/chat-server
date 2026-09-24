@@ -38,7 +38,7 @@ try {
     if (!type) { console.error(`--page-icon: ${ext || "no extension"} is not one of ${Object.keys(ICON_TYPES).join(" ")}`); process.exit(2); }
     pageIcon = `data:${type};base64,${fs.readFileSync(values["page-icon"]).toString("base64")}`;
   }
-  const host = await connectHost(config.mcpUrl);
+  const host = await connectHost(config.mcpUrl, { questionCap: config.questionIndexChars });
   const model = values.model === "fake" ? fakeModel : modelFor(config);
   const store = config.meter === "memory" ? new MemoryStore() : new FirestoreStore();
   const meter = new Meter(store, { monthTokens: config.monthTokens });

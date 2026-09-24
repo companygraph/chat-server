@@ -24,7 +24,7 @@ CHAT_PROJECT=example-project CHAT_REGION=eu CHAT_METER=memory \
 npx --package github:companygraph/chat-server companygraph-chat-http --model fake
 ```
 
-`--model fake` answers one sentence and calls no tool; without it the service calls Vertex AI with the credentials the environment gives it. With `ANTHROPIC_API_KEY` set the service calls the Anthropic API instead of Vertex AI, the same model and the same request; the key is the credential and the provider follows it. `CHAT_METER=memory` keeps the meter in the process; unset, the meter is Firestore. `CHAT_HOSTS` names the hosts the service answers to, unset meaning any; `CHAT_PROXY_HOPS` is how many front ends sit before it, one by default.
+`--model fake` answers one sentence and calls no tool; without it the service calls Vertex AI with the credentials the environment gives it. With `ANTHROPIC_API_KEY` set the service calls the Anthropic API instead of Vertex AI, the same model and the same request; the key is the credential and the provider follows it. `CHAT_METER=memory` keeps the meter in the process; unset, the meter is Firestore. `CHAT_HOSTS` names the hosts the service answers to, unset meaning any; `CHAT_PROXY_HOPS` is how many front ends sit before it, one by default. `CHAT_QUESTION_INDEX_CHARS` caps the prompt's line of the model's own question titles, 4,000 by default; a host with no type `question` carries no such line regardless.
 
 ## Deploying it
 
