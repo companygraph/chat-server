@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createHttpServer } from "companygraph-mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
-import { startFixtureHost, startFixtureHostWithQuestions, exampleSnapshot, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
+import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT, QUESTION_TITLES } from "./helpers.mjs";
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
@@ -93,46 +93,77 @@ test("a tool the host does not have is the host refusing, not the host gone: no 
   }
 });
 
-test("the example model carries no type question, so its question index is empty and asks nothing named list_entities to find out", async () => {
-  host.provenance = { ...host.provenance, commit: "e".repeat(40) };
-  const calls = [];
-  const orig = host.call;
-  host.call = async (name, args) => { calls.push(name); return orig(name, args); };
-  try {
-    assert.deepEqual(await host.questions(), []);
-    assert.ok(calls.includes("list_types"), "the refresh itself happened");
-    assert.ok(!calls.includes("list_entities"), `list_entities should not be called; calls were ${calls.join(", ")}`);
-    assert.equal(host.provenance.commit, COMMIT, "and the real commit came back");
-  } finally {
-    host.call = orig;
-  }
-});
+// The example carries the real type `question` (core 0.40.0, meta-model v0.45.0) with three
+// entities, so the ordinary fixture host answers the question-index tests without any fixture
+// of their own. Each opens its own connection over the shared fixture so an override of `call`
+// or a forced commit never leaks into the module-level `host` the other tests share.
 
-test("a model that declares question carries its titles, read at connect across the host's own pages, cached while the commit stands, and refreshed when it moves", async () => {
-  const titles = Array.from({ length: 60 }, (_, i) => `Question number ${i}?`);
-  const f = await startFixtureHostWithQuestions(titles);
-  const h = await connectHost(f.url);
+test("the real model's question titles are read at connect, cached while the commit stands, and refreshed when it moves", async () => {
+  const h = await connectHost(fixture.url);
   try {
     const first = await h.questions();
-    assert.deepEqual(first, titles, "every title, in order, across two pages of 50 and 10");
+    assert.deepEqual(first, QUESTION_TITLES, "every title the example carries, in id order");
     const again = await h.questions();
     assert.strictEqual(again, first, "the same array while the commit stands");
     h.provenance = { ...h.provenance, commit: "f".repeat(40) };
     const fresh = await h.questions();
     assert.notStrictEqual(fresh, first, "read again once the commit moved");
-    assert.deepEqual(fresh, titles);
+    assert.deepEqual(fresh, QUESTION_TITLES);
   } finally {
     await h.close();
-    await f.close();
+  }
+});
+
+// The example holds only three questions, too few to span the host's own default page of fifty,
+// so the two pages here are a minimal fake of `list_entities`'s own answer: everything else —
+// the connection, the handshake, list_types, the real type map — is the real fixture host.
+test("question titles are read across the host's own pages, following nextCursor while hasMore", async () => {
+  const h = await connectHost(fixture.url);
+  try {
+    h.provenance = { ...h.provenance, commit: "c".repeat(40) };
+    const orig = h.call;
+    const page1 = Array.from({ length: 3 }, (_, i) => ({ id: `question/p1-${i}`, type: "question", name: `Fake question ${i}?`, tagline: "", owner: null }));
+    const page2 = [{ id: "question/p2-0", type: "question", name: "Fake question 3?", tagline: "", owner: null }];
+    h.call = async (name, args) => {
+      if (name === "list_entities" && args?.type === "question") {
+        if (!args.cursor) return { text: "", isError: false, data: { type: "question", entities: page1, page: { total: 4, returned: 3, hasMore: true, nextCursor: "page2" } } };
+        assert.equal(args.cursor, "page2", "the cursor the first page answered with is the one the next call carries");
+        return { text: "", isError: false, data: { type: "question", entities: page2, page: { total: 4, returned: 1, hasMore: false, nextCursor: null } } };
+      }
+      return orig(name, args);
+    };
+    assert.deepEqual(await h.questions(), ["Fake question 0?", "Fake question 1?", "Fake question 2?", "Fake question 3?"]);
+  } finally {
+    await h.close();
+  }
+});
+
+test("a host whose type map carries no question is asked nothing named list_entities to find its titles", async () => {
+  const h = await connectHost(fixture.url);
+  try {
+    h.provenance = { ...h.provenance, commit: "e".repeat(40) };
+    const calls = [];
+    const orig = h.call;
+    h.call = async (name, args) => {
+      calls.push(name);
+      const r = await orig(name, args);
+      // A minimal fake: the real list_types answer, question filtered back out of it, as if
+      // this were a model whose core does not carry the type — the case this branch is for.
+      if (name === "list_types" && r.data?.types) return { ...r, data: { ...r.data, types: r.data.types.filter((t) => t.type !== "question") } };
+      return r;
+    };
+    assert.deepEqual(await h.questions(), [], "no question type, so no index");
+    assert.ok(calls.includes("list_types"), "the refresh itself happened");
+    assert.ok(!calls.includes("list_entities"), `list_entities should not be called; calls were ${calls.join(", ")}`);
+  } finally {
+    await h.close();
   }
 });
 
 test("a failing list_entities yields no index and no throw, and does not stop the types from refreshing", async () => {
-  const titles = ["What does Robert do?", "Can Robert still write code himself?"];
-  const f = await startFixtureHostWithQuestions(titles);
-  const h = await connectHost(f.url);
+  const h = await connectHost(fixture.url);
   try {
-    assert.deepEqual(await h.questions(), titles, "the index is there to start");
+    assert.deepEqual(await h.questions(), QUESTION_TITLES, "the index is there to start");
     h.provenance = { ...h.provenance, commit: "d".repeat(40) };
     const orig = h.call;
     h.call = async (name, args) => (name === "list_entities" ? { text: "", data: { error: { code: "boom" } }, isError: true } : orig(name, args));
@@ -146,7 +177,6 @@ test("a failing list_entities yields no index and no throw, and does not stop th
     }
   } finally {
     await h.close();
-    await f.close();
   }
 });
 
