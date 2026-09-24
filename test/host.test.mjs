@@ -404,10 +404,11 @@ test("a call after the host went away reconnects once, and a host that is gone i
 });
 
 // A degraded host's list_types is a real reconnect underneath — close, a full open(): handshake,
-// listTools, list_types, and up to twenty pages of question titles — and /questions is
-// deliberately uncounted by the bucket, so every page view could otherwise cost one. These four
-// tests hold host.call under a stub that counts its own calls, moving a fake clock by hand
-// rather than waiting on a real cooldown.
+// listTools, list_types, and up to twenty pages of question titles — so during an outage, each
+// chat message that finds the cache stale would otherwise re-enter that whole reconnect before
+// failing, and a busy moment's concurrent messages would multiply that load on a host that is
+// already failing. These four tests hold host.call under a stub that counts its own calls, moving
+// a fake clock by hand rather than waiting on a real cooldown.
 test("a failed refresh is tried once, not on every call, within the cooldown, and the next call after it tries again", async () => {
   const clock = fakeClock();
   const h = await connectHost(fixture.url, { now: clock.now });
