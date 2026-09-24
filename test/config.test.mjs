@@ -38,6 +38,14 @@ test("hosts unset means any, and the meter and hops can be set", () => {
   assert.equal(c.port, 9090);
 });
 
+test("the question index cap defaults to 4000, can be set, and a bad value is refused", () => {
+  assert.equal(configFromEnv(full).questionIndexChars, 4000);
+  assert.equal(configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "2000" }).questionIndexChars, 2000);
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "0" }), /CHAT_QUESTION_INDEX_CHARS/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "-5" }), /CHAT_QUESTION_INDEX_CHARS/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "many" }), /CHAT_QUESTION_INDEX_CHARS/);
+});
+
 test("a key names the provider; none means Vertex", () => {
   assert.equal(configFromEnv(full).provider, "vertex");
   assert.equal(configFromEnv(full).anthropicKey, null);

@@ -27,3 +27,25 @@ export async function startFixtureHost() {
   const url = `http://127.0.0.1:${server.address().port}/mcp`;
   return { url, close: () => new Promise((r) => server.close(r)) };
 }
+
+// The example's core does not carry the type `question` yet (core 0.40.0, not released into the
+// pinned meta-model tag this package's fixtures fetch), so the chat's question-index tests add it
+// beside the real example rather than into it: a schema entry so `list_types` and `requireType`
+// know it, a types entry so it carries no owner, and one entity per title so `list_entities`
+// serves them for real, paged like any other type. Ids are zero-padded so the server's own
+// id-order sort (`list_entities`'s ordering) matches the order `titles` was given in.
+export function questionsSnapshot(titles) {
+  const s = exampleSnapshot();
+  const width = String(titles.length).length;
+  s.schemas = [...s.schemas, { id: "core/question", name: "Question", tagline: "A question a visitor asks, routed to the entities it rests on." }];
+  s.types = [...s.types, { type: "question", owner: null }];
+  s.entities = [...s.entities, ...titles.map((name, i) => ({ id: `question/q${String(i).padStart(width, "0")}`, type: "question", name, tagline: name, owner: null }))];
+  return s;
+}
+
+export async function startFixtureHostWithQuestions(titles) {
+  const server = createHttpServer(questionsSnapshot(titles));
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const url = `http://127.0.0.1:${server.address().port}/mcp`;
+  return { url, close: () => new Promise((r) => server.close(r)) };
+}

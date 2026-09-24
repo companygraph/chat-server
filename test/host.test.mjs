@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createHttpServer } from "companygraph-mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
-import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
+import { startFixtureHost, startFixtureHostWithQuestions, exampleSnapshot, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
@@ -90,6 +90,63 @@ test("a tool the host does not have is the host refusing, not the host gone: no 
     assert.equal((await c.host.call("list_types", {})).isError, false, "and the connection is still the one it was");
   } finally {
     await c.close();
+  }
+});
+
+test("the example model carries no type question, so its question index is empty and asks nothing named list_entities to find out", async () => {
+  host.provenance = { ...host.provenance, commit: "e".repeat(40) };
+  const calls = [];
+  const orig = host.call;
+  host.call = async (name, args) => { calls.push(name); return orig(name, args); };
+  try {
+    assert.deepEqual(await host.questions(), []);
+    assert.ok(calls.includes("list_types"), "the refresh itself happened");
+    assert.ok(!calls.includes("list_entities"), `list_entities should not be called; calls were ${calls.join(", ")}`);
+    assert.equal(host.provenance.commit, COMMIT, "and the real commit came back");
+  } finally {
+    host.call = orig;
+  }
+});
+
+test("a model that declares question carries its titles, read at connect across the host's own pages, cached while the commit stands, and refreshed when it moves", async () => {
+  const titles = Array.from({ length: 60 }, (_, i) => `Question number ${i}?`);
+  const f = await startFixtureHostWithQuestions(titles);
+  const h = await connectHost(f.url);
+  try {
+    const first = await h.questions();
+    assert.deepEqual(first, titles, "every title, in order, across two pages of 50 and 10");
+    const again = await h.questions();
+    assert.strictEqual(again, first, "the same array while the commit stands");
+    h.provenance = { ...h.provenance, commit: "f".repeat(40) };
+    const fresh = await h.questions();
+    assert.notStrictEqual(fresh, first, "read again once the commit moved");
+    assert.deepEqual(fresh, titles);
+  } finally {
+    await h.close();
+    await f.close();
+  }
+});
+
+test("a failing list_entities yields no index and no throw, and does not stop the types from refreshing", async () => {
+  const titles = ["What does Robert do?", "Can Robert still write code himself?"];
+  const f = await startFixtureHostWithQuestions(titles);
+  const h = await connectHost(f.url);
+  try {
+    assert.deepEqual(await h.questions(), titles, "the index is there to start");
+    h.provenance = { ...h.provenance, commit: "d".repeat(40) };
+    const orig = h.call;
+    h.call = async (name, args) => (name === "list_entities" ? { text: "", data: { error: { code: "boom" } }, isError: true } : orig(name, args));
+    try {
+      await assert.doesNotReject(() => h.questions());
+      assert.deepEqual(await h.questions(), [], "no index once the fetch fails");
+      const types = await h.types();
+      assert.ok(types.some((t) => t.type === "question"), "the type refresh itself still succeeded");
+    } finally {
+      h.call = orig;
+    }
+  } finally {
+    await h.close();
+    await f.close();
   }
 });
 
