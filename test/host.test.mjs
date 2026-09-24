@@ -213,6 +213,33 @@ test("a many-page model stops fetching once the cap is full, and says more: true
   }
 });
 
+// A host whose titles are short enough that the cap never binds, and whose cursor genuinely
+// advances every page — no repeat, no shortage of room — so the only thing that can stop this
+// is the fixed page limit itself, at exactly twenty requests, with more: true.
+test("a host that keeps genuinely advancing its cursor forever stops at the fixed page limit, with more: true", async () => {
+  const h = await connectHost(fixture.url);
+  try {
+    const realTypes = await h.types();
+    let requests = 0;
+    mockCommit(h, "6".repeat(40), realTypes, {
+      onOther: (name, args) => {
+        if (name === "list_entities" && args?.type === "question") {
+          requests++;
+          const n = Number(args.cursor ?? "0");
+          return { text: "", isError: false, data: { type: "question", entities: [{ id: `question/p${n}`, type: "question", name: `Q${n}?`, tagline: "", owner: null }], page: { total: 999999, returned: 1, hasMore: true, nextCursor: String(n + 1) } } };
+        }
+        throw new Error(`unexpected call: ${name}`);
+      },
+    });
+    const result = await h.questions();
+    assert.equal(result.more, true, "the host never ran out and the cap never bound; only the page limit stopped it");
+    assert.equal(requests, 20, "exactly the fixed page limit, not one page more");
+    assert.deepEqual(result.titles, Array.from({ length: 20 }, (_, i) => `Q${i}?`), "every title the twenty pages gave, none dropped by the cap");
+  } finally {
+    await h.close();
+  }
+});
+
 test("a host whose type map carries no question is asked nothing named list_entities to find its titles", async () => {
   const h = await connectHost(fixture.url);
   try {
@@ -283,6 +310,33 @@ test("two requests together after a commit move cause one list_types call", asyn
     const [a, b] = await Promise.all([h.types(), h.types()]);
     assert.strictEqual(a, b, "both calls got the very same fresh list");
     assert.equal(calls.filter((n) => n === "list_types").length, 1, `list_types should be called once; calls were ${calls.join(", ")}`);
+  } finally {
+    await h.close();
+  }
+});
+
+// Sharing one refresh cuts both ways: if it fails, both callers waiting on it see the failure,
+// not one told and the other left hanging or, worse, silently given stale data. A refresh that
+// then succeeds is not sharing the failed one — the next call is a fresh attempt of its own.
+test("a shared refresh that fails rejects both concurrent callers, and the next call recovers", async () => {
+  const h = await connectHost(fixture.url);
+  try {
+    const realTypes = await h.types();
+    h.provenance = { ...h.provenance, commit: "5".repeat(40) };
+    const orig = h.call;
+    let failNext = true;
+    h.call = async (name, args) => {
+      if (name === "list_types" && failNext) { failNext = false; throw new Error("boom"); }
+      if (name === "list_types") return { text: "", isError: false, data: { types: realTypes, model: { commit: "5".repeat(40), repo: null, core: "0", parser: "0" } } };
+      return orig(name, args);
+    };
+    const [a, b] = await Promise.allSettled([h.types(), h.types()]);
+    assert.equal(a.status, "rejected", "the first caller sees the failure");
+    assert.equal(b.status, "rejected", "the second, sharing the same in-flight refresh, sees it too");
+    assert.equal(a.reason.message, "boom");
+    assert.equal(b.reason.message, "boom");
+    const after = await h.types();
+    assert.ok(after.some((t) => t.type === "question"), "the next call is a fresh attempt, not the failed one shared again, and it recovers");
   } finally {
     await h.close();
   }

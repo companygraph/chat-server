@@ -65,9 +65,11 @@ test("with questions, the prompt carries both the line and QUESTION_RULE, the ru
   const p = systemPrompt("x", "en", types, questions);
   assert.ok(p.includes('Questions this model answers, each an entity of type question: "What does Robert do?"'), "the line is there");
   assert.ok(p.includes(QUESTION_RULE), "and the rule");
-  const searchRuleIdx = p.indexOf(RULES[6]);
-  assert.ok(searchRuleIdx >= 0 && searchRuleIdx < p.indexOf(QUESTION_RULE), "the search rule comes first");
-  assert.ok(p.indexOf(QUESTION_RULE) < p.indexOf(RULES[7]), "then QUESTION_RULE, then the next rule unchanged");
+  // Found by the rule's own text, not RULES's index, so a rule inserted or removed ahead of it
+  // in a later change does not make this assertion pass or fail for the wrong reason.
+  const searchRule = RULES.find((r) => r.startsWith("A question about a kind of thing"));
+  assert.ok(searchRule, "the tools/search rule is still in RULES");
+  assert.ok(p.includes(`${searchRule} ${QUESTION_RULE}`), "QUESTION_RULE directly follows the tools/search rule's own text");
   for (const r of RULES) assert.ok(p.includes(r), `rule missing: ${r}`);
 });
 
