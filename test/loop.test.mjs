@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP } from "../lib/loop.mjs";
+import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
@@ -321,4 +321,55 @@ test("an answer about a capped entity names what lies past its fifty edges, once
   assert.ok(names.some((n) => n.title === "Skill 100"));
   assert.ok(!names.some((n) => n.id === "profiles/x"), "the cited entity is not also a name");
   assert.equal(model.requests[1].messages.at(-1).content[0].content, "{}", "the model is shown the tool's own answer and nothing the extra pages read");
+});
+
+// What the route keeps of a question is what the loop saw: the ids it cited, the calls it made
+// and how many of them found nothing, the rounds it ran. They come back with the answer, and
+// they come back on the error, since a refusal between two rounds is also a question asked.
+test("the answer carries its signals: the ids cited, the calls, the empty ones, the rounds", async () => {
+  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  const model = fakeModel([
+    toolTurn("search", { query: EXAMPLE_ROOT, match: "name" }),
+    toolTurn("get_entity", { id: rootId }),
+    textTurn("It is the company."),
+  ]);
+  const { emit } = collect();
+  const r = await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "what is it?" }], lang: "en" }, emit);
+  assert.deepEqual(r.cited, [rootId]);
+  assert.equal(r.calls, 2);
+  assert.equal(r.empty, 0);
+  assert.equal(r.rounds, 3);
+});
+
+test("a search that finds nothing is counted as empty, and an answer that cites nothing has an empty list", async () => {
+  const model = fakeModel([
+    toolTurn("search", { query: "xqzv wvkq", match: "words" }),
+    textTurn("The model does not say."),
+  ]);
+  const { emit } = collect();
+  const r = await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "who is xqzv?" }], lang: "en" }, emit);
+  assert.deepEqual(r.cited, []);
+  assert.equal(r.calls, 1);
+  assert.equal(r.empty, 1);
+  assert.equal(r.rounds, 2);
+});
+
+test("a refusal thrown before the first call carries four zeros as its signals", async () => {
+  const model = fakeModel([textTurn("never reached")]);
+  const { emit } = collect();
+  const m = new Meter(new MemoryStore(), { monthTokens: 100 });
+  await assert.rejects(
+    answer({ host, model, meter: m }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit),
+    (err) => { assert.equal(err.code, "over_month"); assert.deepEqual(err.signals, { cited: [], calls: 0, empty: 0, rounds: 0 }); return true; },
+  );
+});
+
+test("foundNothing: a refused call, an error answer and an empty list are nothing; an entity and a list with rows are not", () => {
+  assert.equal(foundNothing({ isError: true, data: null }), true);
+  assert.equal(foundNothing({ isError: false, data: { error: { code: "not_found" } } }), true);
+  assert.equal(foundNothing({ isError: false, data: { results: [] } }), true);
+  assert.equal(foundNothing({ isError: false, data: { entities: [], page: { hasMore: false } } }), true);
+  assert.equal(foundNothing({ isError: false, data: { results: [{ id: "x", title: "X" }] } }), false);
+  assert.equal(foundNothing({ isError: false, data: { entity: { id: "x", title: "X", references: [] } } }), false, "an entity with no references is the entity");
+  assert.equal(foundNothing({ isError: false, data: { types: [] } }), false, "a schema answer is neither an entity nor a list of them");
 });
