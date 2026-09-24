@@ -1,6 +1,6 @@
 {
   "name": "companygraph-chat-server",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "A chat over any CompanyGraph MCP host: the model asked in prose, answered from its tools",
   "license": "Apache-2.0",
   "type": "module",
