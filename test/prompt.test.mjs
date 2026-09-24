@@ -54,6 +54,15 @@ test("a title alone longer than the cap leaves no line at all", () => {
   assert.equal(questionIndexLine(["Q".repeat(5000) + "?"], 4000), "");
 });
 
+test("more: true ends the line in the overflow sentence even where every given title fits the cap", () => {
+  const titles = ["What does Robert do?", "Can Robert still write code himself?"];
+  const withoutMore = questionIndexLine(titles, 4000, false);
+  const withMore = questionIndexLine(titles, 4000, true);
+  assert.ok(withoutMore.endsWith("."), "unchanged: nothing was left out, so a period");
+  assert.ok(withMore.endsWith("; and more, found by search with type question"), "more titles exist beyond what was fetched, even though these fit");
+  assert.equal(withMore.slice(0, withMore.length - "; and more, found by search with type question".length), withoutMore.slice(0, -1), "the same titles, just a different ending");
+});
+
 test("systemPrompt places the question index line after the type map and before the rules, and omits it with no question type or no questions", () => {
   const types = [{ type: "question", count: 2, owner: null }];
   const questions = ["What does Robert do?", "Can Robert still write code himself?"];
