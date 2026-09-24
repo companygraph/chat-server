@@ -46,6 +46,13 @@ test("the question index cap defaults to 4000, can be set, and a bad value is re
   assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "many" }), /CHAT_QUESTION_INDEX_CHARS/);
 });
 
+test("a value below the minimum says so by name, apart from a value that is not a number at all", () => {
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "0" }), /CHAT_QUESTION_INDEX_CHARS must be at least 1: 0/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "-5" }), /CHAT_QUESTION_INDEX_CHARS must be at least 1: -5/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_QUESTION_INDEX_CHARS: "many" }), /CHAT_QUESTION_INDEX_CHARS is not a whole number: many/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_PROXY_HOPS: "-1" }), /CHAT_PROXY_HOPS must be at least 0: -1/);
+});
+
 test("a key names the provider; none means Vertex", () => {
   assert.equal(configFromEnv(full).provider, "vertex");
   assert.equal(configFromEnv(full).anthropicKey, null);
