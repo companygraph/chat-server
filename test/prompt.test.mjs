@@ -93,6 +93,19 @@ test("a title with a double quote is escaped so the line stays unambiguous", () 
   assert.equal((line.match(/(?<!\\)"/g) ?? []).length % 2, 0, "every unescaped quote still pairs up");
 });
 
+test("a title ending in a backslash is escaped so the closing quote is not read as escaped", () => {
+  const title = "A path that ends in a backslash\\";
+  const line = questionIndexLine([title], 4000);
+  assert.ok(line.endsWith('backslash\\\\".'), "the trailing backslash is doubled ahead of the closing quote");
+  // A lone backslash right before the closing quote would read as escaping that quote instead
+  // of standing for itself, the same hazard a title with a literal quote in it has; an even run
+  // of backslashes there means the quote genuinely closes the string.
+  const closingQuoteIdx = line.length - 2;
+  let backslashes = 0;
+  for (let i = closingQuoteIdx - 1; line[i] === "\\"; i--) backslashes++;
+  assert.equal(backslashes % 2, 0, "an even run of backslashes ahead of the closing quote");
+});
+
 test("a title alone longer than the cap leaves no line at all", () => {
   assert.equal(questionIndexLine(["Q".repeat(5000) + "?"], 4000), "");
 });
