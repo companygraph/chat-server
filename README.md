@@ -1,6 +1,6 @@
 # CompanyGraph — Chat Server
 
-A chat over any CompanyGraph MCP host. A visitor types a question on a site, this service asks the site's MCP host through its tools, and Claude Sonnet 5, on Vertex AI in the deployment's own project or on the Anthropic API with a key, writes the answer from what the tools said, naming the entity each claim rests on. It holds no model and pins no commit: what it answers is what the host answers, at the commit every answer of the host names. A re-pin of the host is a change the chat sees without a deploy.
+A chat over any CompanyGraph MCP host. A visitor types a question on a site, this service asks the site's MCP host through its tools, and Claude Sonnet 5, on Vertex AI in the deployment's own project or on the Anthropic API with a key, writes the answer from what the tools said, naming the entity each claim rests on. It holds no model and pins no commit: what it answers is what the host answers, at the commit every answer of the host names. A re-pin of the host is a change the chat sees without a deploy. A refresh of the host's types that fails holds off trying the host again for thirty seconds, meanwhile answering from what was last read, so a degraded host is asked once and not once a message.
 
 The design is [`docs/superpowers/specs/2026-09-22-chat-server-design.md`](docs/superpowers/specs/2026-09-22-chat-server-design.md). The routes, the events and the codes are [`docs/INTERFACE.md`](docs/INTERFACE.md).
 

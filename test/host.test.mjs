@@ -4,6 +4,14 @@ import http from "node:http";
 import { createHttpServer } from "companygraph-mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
 import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT, QUESTION_TITLES } from "./helpers.mjs";
+import { REFRESH_FAILURE_COOLDOWN_MS } from "../lib/host.mjs";
+
+// A clock this suite moves by hand, so a cooldown measured in real seconds is proven without the
+// suite itself waiting on one.
+function fakeClock(start = 0) {
+  let t = start;
+  return { now: () => t, advance: (ms) => { t += ms; } };
+}
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
@@ -275,8 +283,9 @@ test("a failing list_entities yields no index and no throw, and does not stop th
 // before in place; the next call, still on that same commit, must retry the question fetch
 // alone — no further list_types call, since types are already fresh — and not clear the titles
 // meanwhile.
-test("a failing list_entities marks only the questions stale; the next call retries them alone, not the types", async () => {
-  const h = await connectHost(fixture.url);
+test("a failing list_entities marks only the questions stale; the next call once the cooldown passes retries them alone, not the types", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
   try {
     const before = await h.questions();
     assert.deepEqual(before.titles, QUESTION_TITLES, "the index is there to start");
@@ -287,6 +296,9 @@ test("a failing list_entities marks only the questions stale; the next call retr
     const duringFailure = await h.questions();
     assert.deepEqual(duringFailure.titles, QUESTION_TITLES, "kept, not cleared, while the fetch fails");
 
+    // The cooldown the failed fetch just started holds off a retry on the very next call; past
+    // it, the retry happens and is the questions half alone, the types already fresh.
+    clock.advance(REFRESH_FAILURE_COOLDOWN_MS + 1);
     calls = [];
     mockCommit(h, NEW_COMMIT, realTypes, { calls, onOther: (name, args) => orig(name, args) }); // list_entities now answered for real
     const after = await h.questions();
@@ -318,8 +330,9 @@ test("two requests together after a commit move cause one list_types call", asyn
 // Sharing one refresh cuts both ways: if it fails, both callers waiting on it see the failure,
 // not one told and the other left hanging or, worse, silently given stale data. A refresh that
 // then succeeds is not sharing the failed one — the next call is a fresh attempt of its own.
-test("a shared refresh that fails rejects both concurrent callers, and the next call recovers", async () => {
-  const h = await connectHost(fixture.url);
+test("a shared refresh that fails rejects both concurrent callers, and the next call, once the cooldown passes, recovers", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
   try {
     const realTypes = await h.types();
     h.provenance = { ...h.provenance, commit: "5".repeat(40) };
@@ -335,6 +348,9 @@ test("a shared refresh that fails rejects both concurrent callers, and the next 
     assert.equal(b.status, "rejected", "the second, sharing the same in-flight refresh, sees it too");
     assert.equal(a.reason.message, "boom");
     assert.equal(b.reason.message, "boom");
+    // Immediately after, the failure's own cooldown would hold off a retry and answer the stale
+    // cache instead; advancing past it is what makes this a genuine second attempt.
+    clock.advance(REFRESH_FAILURE_COOLDOWN_MS + 1);
     const after = await h.types();
     assert.ok(after.some((t) => t.type === "question"), "the next call is a fresh attempt, not the failed one shared again, and it recovers");
   } finally {
@@ -385,4 +401,136 @@ test("a call after the host went away reconnects once, and a host that is gone i
   await assert.rejects(() => h.call("list_types", {}), (e) => e.code === "host_down");
   await h.close();
   await assert.rejects(() => connectHost("http://127.0.0.1:1/mcp"), (e) => e.code === "host_down");
+});
+
+// A degraded host's list_types is a real reconnect underneath — close, a full open(): handshake,
+// listTools, list_types, and up to twenty pages of question titles — and /questions is
+// deliberately uncounted by the bucket, so every page view could otherwise cost one. These four
+// tests hold host.call under a stub that counts its own calls, moving a fake clock by hand
+// rather than waiting on a real cooldown.
+test("a failed refresh is tried once, not on every call, within the cooldown, and the next call after it tries again", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
+  try {
+    const realTypes = await h.types();
+    h.provenance = { ...h.provenance, commit: "1".repeat(40) };
+    const calls = [];
+    let fail = true;
+    // Once list_types succeeds, the example's own types carry `question`, so a fresh commit
+    // also asks list_entities; that call is stubbed to succeed trivially, since this test counts
+    // list_types attempts, the call whose failure is the expensive one this cooldown guards.
+    h.call = async (name) => {
+      calls.push(name);
+      if (name === "list_types") {
+        if (fail) throw new Error("boom");
+        return { text: "", isError: false, data: { types: realTypes, model: { commit: "1".repeat(40), repo: null, core: "0", parser: "0" } } };
+      }
+      if (name === "list_entities") return { text: "", isError: false, data: { type: "question", entities: [], page: { total: 0, returned: 0, hasMore: false, nextCursor: null } } };
+      throw new Error(`unexpected call: ${name}`);
+    };
+    const typesCalls = () => calls.filter((n) => n === "list_types").length;
+    await assert.rejects(() => h.types(), /boom/, "the failing attempt itself still rejects");
+    assert.equal(typesCalls(), 1, "the one attempt this failure made");
+    for (let i = 0; i < 5; i++) {
+      const t = await h.types();
+      assert.strictEqual(t, realTypes, "the last good types, unchanged, while the cooldown holds");
+    }
+    assert.equal(typesCalls(), 1, "none of those five calls attempted a refresh");
+    clock.advance(REFRESH_FAILURE_COOLDOWN_MS + 1);
+    fail = false;
+    const after = await h.types();
+    assert.ok(after.some((t) => t.type === "question"), "a fresh, successful attempt");
+    assert.equal(typesCalls(), 2, "the first call once the cooldown passed tried again");
+  } finally {
+    await h.close();
+  }
+});
+
+test("a failed titles fetch that keeps the types is retried once within the cooldown, then tried again once it passes", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
+  try {
+    const before = await h.questions();
+    assert.deepEqual(before.titles, QUESTION_TITLES);
+    const realTypes = await h.types();
+    const NEW_COMMIT = "2".repeat(40);
+    h.provenance = { ...h.provenance, commit: NEW_COMMIT };
+    const calls = [];
+    let fail = true;
+    h.call = async (name, args) => {
+      calls.push(name);
+      if (name === "list_types") return { text: "", isError: false, data: { types: realTypes, model: { commit: NEW_COMMIT, repo: null, core: "0", parser: "0" } } };
+      if (name === "list_entities" && args?.type === "question") {
+        if (fail) return { text: "", isError: true, data: { error: { code: "boom" } } };
+        return { text: "", isError: false, data: { type: "question", entities: [{ id: "question/x", type: "question", name: "New question?", tagline: "", owner: null }], page: { total: 1, returned: 1, hasMore: false, nextCursor: null } } };
+      }
+      throw new Error(`unexpected call: ${name}`);
+    };
+    const first = await h.questions();
+    assert.deepEqual(first.titles, QUESTION_TITLES, "kept, not cleared, while the fetch fails");
+    assert.equal(calls.filter((n) => n === "list_entities").length, 1);
+    for (let i = 0; i < 4; i++) await h.questions();
+    assert.equal(calls.filter((n) => n === "list_entities").length, 1, "no retry of the titles fetch within the cooldown");
+    assert.equal(calls.filter((n) => n === "list_types").length, 1, "types were already fresh; never retried regardless of the cooldown");
+    clock.advance(REFRESH_FAILURE_COOLDOWN_MS + 1);
+    fail = false;
+    const after = await h.questions();
+    assert.deepEqual(after.titles, ["New question?"]);
+    assert.equal(calls.filter((n) => n === "list_entities").length, 2, "the first call once the cooldown passed tried the titles fetch again");
+  } finally {
+    await h.close();
+  }
+});
+
+test("a success clears the cooldown, so a further commit move right after it is tried immediately", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
+  try {
+    const realTypes = await h.types();
+    let commit = "3".repeat(40);
+    h.provenance = { ...h.provenance, commit };
+    const calls = [];
+    let fail = true;
+    h.call = async (name) => {
+      calls.push(name);
+      if (name === "list_types") {
+        if (fail) throw new Error("boom");
+        return { text: "", isError: false, data: { types: realTypes, model: { commit, repo: null, core: "0", parser: "0" } } };
+      }
+      if (name === "list_entities") return { text: "", isError: false, data: { type: "question", entities: [], page: { total: 0, returned: 0, hasMore: false, nextCursor: null } } };
+      throw new Error(`unexpected call: ${name}`);
+    };
+    const typesCalls = () => calls.filter((n) => n === "list_types").length;
+    await assert.rejects(() => h.types());
+    clock.advance(REFRESH_FAILURE_COOLDOWN_MS + 1);
+    fail = false;
+    await h.types();
+    assert.equal(typesCalls(), 2, "the cooldown passed and this attempt recovered");
+    commit = "4".repeat(40);
+    h.provenance = { ...h.provenance, commit };
+    fail = true;
+    await assert.rejects(() => h.types());
+    assert.equal(typesCalls(), 3, "tried immediately: the success just above cleared the cooldown rather than leaving it set");
+  } finally {
+    await h.close();
+  }
+});
+
+test("many concurrent callers during a failure share one attempt, and many concurrent callers within the cooldown afterward cost no further attempt", async () => {
+  const clock = fakeClock();
+  const h = await connectHost(fixture.url, { now: clock.now });
+  try {
+    const realTypes = await h.types();
+    h.provenance = { ...h.provenance, commit: "9".repeat(40) };
+    const calls = [];
+    h.call = async (name) => { calls.push(name); throw new Error("boom"); };
+    const failed = await Promise.allSettled([h.types(), h.types(), h.types()]);
+    assert.ok(failed.every((r) => r.status === "rejected"), "every concurrent caller sees the one shared attempt fail");
+    assert.equal(calls.length, 1, "the three concurrent callers shared one refresh attempt");
+    const settled = await Promise.all([h.types(), h.types(), h.types()]);
+    for (const t of settled) assert.strictEqual(t, realTypes, "the cached types, not a further attempt");
+    assert.equal(calls.length, 1, "still the one attempt; the cooldown held for all three concurrent callers");
+  } finally {
+    await h.close();
+  }
 });

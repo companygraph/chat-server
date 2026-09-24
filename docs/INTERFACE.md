@@ -14,6 +14,8 @@ What a page's widget, or any client, may rely on: the routes, the request, the e
 
 A request whose `Host` is not one the deployment named is `421`. Any other path is `404`; any other method on `/chat` is `405`.
 
+The host's types, which `provenance` on `/health` and `/chat` both read, are refreshed at connect and again when the host's commit moves; a refresh that fails holds off trying the host again for thirty seconds, meanwhile answering from whatever was last read, before trying once more.
+
 ## The request
 
 A `POST /chat` carries the header `X-Chat: 1` and a JSON body of at most 64 KiB: `messages`, the conversation as `{ role, content }` turns, `user` and `assistant` alternating and beginning and ending with `user`, each `content` a string; and `lang`, `en` or `de`, for the sentences the server writes itself. A `user` turn is at most 1,000 characters after trimming. The server reads only the last eight turns.
