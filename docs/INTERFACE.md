@@ -32,7 +32,7 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | --- | --- | --- |
 | `text` | `{ text }` | a piece of the answer, as it is generated, in order |
 | `cite` | `{ id, title, type, url }`, `url` null where the host names no file | a tool answered with one entity, or evidence for one skill; the widget links it, and an entity cited already in this message is not cited twice |
-| `names` | `{ names: [{ id, title }] }` | every entity a list answer named, at most sixty a message, each once and never one the answer also cites; the widget links these names where the text writes them |
+| `names` | `{ names: [{ id, title }] }` | every entity a list answer named, and every entity an entity answer references past the fifty edges it holds, read from the host; at most three hundred a message, each once and never one the answer also cites; the widget links these names where the text writes them |
 | `done` | `{ model, spent, dayLeft, cut }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not |
 | `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 

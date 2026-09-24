@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn } from "../lib/loop.mjs";
+import { answer, namesIn, namesPastTheCap, NAME_CAP } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
@@ -256,12 +256,69 @@ test("a list answer gives up every entity it named, once a message and never one
   assert.equal(new Set(list.map((n) => n.id)).size, list.length, "no id twice");
 });
 
-test("namesIn reads a list, ignores a refusal and a single entity, and stops at sixty", () => {
+test("namesIn reads a list, ignores a refusal and a single entity, names an id once, and stops at the cap", () => {
   assert.deepEqual(namesIn({ results: [{ id: "a/b", title: "A B" }] }), [{ id: "a/b", title: "A B" }]);
   assert.deepEqual(namesIn({ error: { code: "not_found" }, results: [{ id: "a/b", title: "A B" }] }), []);
   assert.deepEqual(namesIn({ entity: { id: "a/b", title: "A B" } }), [], "the entity itself is the cite's, not a name");
   assert.deepEqual(namesIn({ entity: { id: "a/b", references: [{ via: "Skills.Skill", to: { id: "skills/java", name: "Java" } }] } }),
     [{ id: "skills/java", title: "Java" }], "and what it references is a name");
-  assert.equal(namesIn({ entities: Array.from({ length: 80 }, (_, i) => ({ id: `t/${i}`, name: `N ${i}` })) }).length, 60);
+  assert.equal(namesIn({ entities: Array.from({ length: NAME_CAP + 20 }, (_, i) => ({ id: `t/${i}`, name: `N ${i}` })) }).length, NAME_CAP);
+  const repeats = { entity: { id: "p/x", references: Array.from({ length: 50 }, (_, i) => ({ via: "Evidence.Skill", to: { id: `skills/${i % 5}`, name: `Skill ${i % 5}` } })) } };
+  assert.equal(namesIn(repeats).length, 5, "fifty edges to five skills are five names");
+  assert.deepEqual(namesIn({ edges: [{ from: { id: "p/x", name: "X" }, via: "Skills.Skill", to: { id: "skills/java", name: "Java" } }] }),
+    [{ id: "skills/java", title: "Java" }], "a list_references page names each edge's far end");
   assert.deepEqual(namesIn({ results: [{ id: "a/b", title: "Ab" }] }), [], "a name of two letters is not linked");
+});
+
+// An entity with more edges than its answer holds: the names past the fifty are read from the
+// host's list_references, a few pages at most, and reach the widget with the rest.
+const capped = (n) => ({
+  entity: {
+    id: "profiles/x", name: "X", referenceCounts: { references: n, referencedBy: 0 },
+    references: Array.from({ length: 50 }, (_, i) => ({ via: "Evidence.Skill", to: { id: `skills/${i % 3}`, name: `Skill ${i % 3}` } })),
+  },
+});
+const pagedHost = (total, calls) => ({
+  async call(name, args) {
+    calls.push([name, args]);
+    const start = args.cursor ? Number(args.cursor) : 0;
+    const end = Math.min(total, start + args.limit);
+    const edges = Array.from({ length: end - start }, (_, i) => ({ from: { id: "profiles/x", name: "X" }, via: "Skills.Skill", to: { id: `skills/${start + i}`, name: `Skill ${start + i}` } }));
+    return { text: "", isError: false, data: { edges, page: { hasMore: end < total, nextCursor: end < total ? String(end) : null } } };
+  },
+});
+
+test("namesPastTheCap reads the outgoing edges an entity answer left out, a few pages at most", async () => {
+  const calls = [];
+  const names = await namesPastTheCap(pagedHost(250, calls), capped(250));
+  assert.equal(names.length, 250);
+  assert.deepEqual(calls.map(([n, a]) => [n, a.entity, a.direction, a.cursor ?? null]), [["list_references", "profiles/x", "out", null], ["list_references", "profiles/x", "out", "200"]]);
+  const many = [];
+  await namesPastTheCap(pagedHost(5000, many), capped(5000));
+  assert.equal(many.length, 3, "an entity with thousands of edges is read three pages deep and no further");
+});
+
+test("namesPastTheCap asks nothing of an entity its answer holds whole, a list, or a refusal", async () => {
+  const calls = [];
+  const h = pagedHost(10, calls);
+  assert.deepEqual(await namesPastTheCap(h, capped(50)), []);
+  assert.deepEqual(await namesPastTheCap(h, { results: [] }), []);
+  assert.deepEqual(await namesPastTheCap(h, { error: { code: "not_found" } }), []);
+  assert.equal(calls.length, 0);
+  const broken = { async call() { throw new Error("down"); } };
+  assert.deepEqual(await namesPastTheCap(broken, capped(250)), [], "a host that fails a page leaves the names plain and the answer standing");
+});
+
+test("an answer about a capped entity names what lies past its fifty edges, once each, and never the cite", async () => {
+  const calls = [];
+  const paged = pagedHost(120, calls);
+  const h = { ...host, call: async (name, args) => (name === "get_entity" ? { text: "{}", isError: false, data: capped(120) } : paged.call(name, args)) };
+  const model = fakeModel([toolTurn("get_entity", { id: "profiles/x" }), textTurn("Skill 100 and Skill 7.")]);
+  const { events, emit } = collect();
+  await answer({ host: h, model, meter: meter() }, { messages: [{ role: "user", content: "which skills?" }], lang: "en" }, emit);
+  const names = events.filter(([e]) => e === "names").flatMap(([, d]) => d.names);
+  assert.equal(names.length, 120, "every skill past the fifty is named, and the three the fifty repeat are not named twice");
+  assert.ok(names.some((n) => n.title === "Skill 100"));
+  assert.ok(!names.some((n) => n.id === "profiles/x"), "the cited entity is not also a name");
+  assert.equal(model.requests[1].messages.at(-1).content[0].content, "{}", "the model is shown the tool's own answer and nothing the extra pages read");
 });
