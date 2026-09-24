@@ -288,6 +288,42 @@ test("two requests together after a commit move cause one list_types call", asyn
   }
 });
 
+// A title too long for even one entity to fit is logged once, at the fetch — a commit move, not
+// a chat message — and not again while the commit stands, however many messages read the cache.
+test("a title alone longer than the cap is logged once, naming CHAT_QUESTION_INDEX_CHARS, and not again while the commit stands", async () => {
+  // 250 comfortably fits the example's own three real titles at connect (so connecting alone
+  // logs nothing), and does not fit the one long title the mocked commit below answers with.
+  const h = await connectHost(fixture.url, { questionCap: 250 });
+  try {
+    const realTypes = await h.types();
+    const longTitle = "A question worded at some real length, deliberately padded further so that it comfortably exceeds a cap of two hundred fifty characters on its own, well past it?";
+    mockCommit(h, "7".repeat(40), realTypes, {
+      onOther: (name, args) => {
+        if (name === "list_entities" && args?.type === "question") {
+          return { text: "", isError: false, data: { type: "question", entities: [{ id: "question/long", type: "question", name: longTitle, tagline: "", owner: null }], page: { total: 1, returned: 1, hasMore: false, nextCursor: null } } };
+        }
+        throw new Error(`unexpected call: ${name}`);
+      },
+    });
+    const logs = [];
+    const origError = console.error;
+    console.error = (...args) => logs.push(args);
+    try {
+      const first = await h.questions();
+      assert.deepEqual(first, { titles: [], more: true });
+      const again = await h.questions();
+      assert.deepEqual(again, { titles: [], more: true });
+    } finally {
+      console.error = origError;
+    }
+    assert.equal(logs.length, 1, `logged once, not per request; logged ${logs.length} times`);
+    assert.equal(logs[0][0], "chat: question index");
+    assert.match(logs[0][1], /CHAT_QUESTION_INDEX_CHARS/);
+  } finally {
+    await h.close();
+  }
+});
+
 test("a call after the host went away reconnects once, and a host that is gone is host_down", async () => {
   const second = await startFixtureHost();
   const h = await connectHost(second.url);
