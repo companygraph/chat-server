@@ -6,7 +6,7 @@ import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
 import { MAX_BODY_BYTES } from "../lib/shape.mjs";
-import { startFixtureHost, COMMIT } from "./helpers.mjs";
+import { startFixtureHost, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
 
 const raw = (base, path, headers) => new Promise((resolve, reject) => {
   const u = new URL(base);
@@ -26,8 +26,8 @@ const scripted = (...texts) => ({ name: "fake", async turn(req, onText) { const 
 
 const config = (over = {}) => ({ mcpUrl: host.url, origins: ["https://site.test"], hosts: null, monthTokens: 1_000_000, project: "p", region: "eu", proxyHops: 1, port: 0, meter: "memory", anthropicKey: null, provider: "vertex", ...over });
 
-async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), opts = {} } = {}) {
-  const server = createHttpServer({ config: cfg, host, model, meter, bucket }, opts);
+async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), log = () => {}, opts = {} } = {}) {
+  const server = createHttpServer({ config: cfg, host, model, meter, bucket, log }, opts);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   after(() => server.close());
   return `http://127.0.0.1:${server.address().port}`;
@@ -243,4 +243,132 @@ test("a body with no length is counted as it arrives, cut off at the cap, and th
   });
   assert.equal(status, 413);
   assert.equal((await fetch(`${base}/health`)).status, 200);
+});
+
+// The line the log keeps of a question: the words, the language, and what the loop saw. It is
+// written once the visitor has their answer or their refusal, never for a body that carried no
+// question the shape accepts, and it carries no address and no word of the answer.
+const KEYS = ["kind", "question", "lang", "cited", "calls", "empty", "rounds", "refused"];
+const lines = () => { const out = []; return { out, log: (s) => out.push(s) }; };
+const tools = (...turns) => ({ name: "fake", async turn(req, onText) { const t = turns.shift(); for (const c of t.content) if (c.type === "text") onText(c.text); return t; } });
+const toolTurn = (name, input) => ({ content: [{ type: "tool_use", id: `tu_${name}`, name, input }], stop_reason: "tool_use", usage });
+const textTurn = (text) => ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage });
+
+test("an answered question is kept as one line with the words, the language and the loop's signals", async () => {
+  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  const { out, log } = lines();
+  const base = await listen({ model: tools(toolTurn("get_entity", { id: rootId }), textTurn("It is the company.")), log });
+  const r = await post(base, { messages: [{ role: "user", content: "What is it?" }], lang: "de" }, { "x-forwarded-for": "203.0.113.77, 35.0.0.1" });
+  await r.text();
+  assert.equal(out.length, 1);
+  const line = JSON.parse(out[0]);
+  assert.deepEqual(Object.keys(line), KEYS);
+  assert.deepEqual(line, { kind: "question", question: "What is it?", lang: "de", cited: [rootId], calls: 1, empty: 0, rounds: 2, refused: null });
+  assert.ok(!out[0].includes("203.0.113.77"), "no address in the line");
+  assert.ok(!out[0].includes("It is the company"), "no word of the answer in the line");
+});
+
+test("a lang the interface does not name is kept as null, so the line holds nothing unbounded but the question", async () => {
+  const { out, log } = lines();
+  const base = await listen({ model: tools(textTurn("Hello.")), log });
+  await (await post(base, { messages: [{ role: "user", content: "hi" }], lang: "x".repeat(50_000) })).text();
+  assert.equal(out.length, 1);
+  assert.equal(JSON.parse(out[0]).lang, null);
+  assert.ok(out[0].length < 1_000, "the line is bounded");
+});
+
+test("a question the model could not find is kept with an empty cited list and the empty count", async () => {
+  const { out, log } = lines();
+  const base = await listen({ model: tools(toolTurn("search", { query: "xqzv wvkq", match: "words" }), textTurn("The model does not say.")), log });
+  await (await post(base, { messages: [{ role: "user", content: "who is xqzv?" }], lang: "en" })).text();
+  const line = JSON.parse(out[0]);
+  assert.deepEqual(line.cited, []);
+  assert.equal(line.calls, 1);
+  assert.equal(line.empty, 1);
+  assert.equal(line.refused, null);
+});
+
+test("a refusal after the question was read is kept with its code, and one before it is not", async () => {
+  const { out, log } = lines();
+  const meter = new Meter(new MemoryStore(), { monthTokens: 100 });
+  const base = await listen({ cfg: config({ monthTokens: 100 }), meter, log });
+  assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 429);
+  assert.deepEqual(JSON.parse(out[0]), { kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "over_month" });
+  await meter.store.transact((d) => ({ ...d, closed: true }));
+  assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 503);
+  assert.equal(JSON.parse(out[1]).refused, "closed");
+  const foreign = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, { origin: "https://other.test" });
+  assert.equal(foreign.status, 403);
+  const bad = await post(base, "null");
+  assert.equal(bad.status, 400);
+  const long = await post(base, { messages: [{ role: "user", content: "x".repeat(1001) }], lang: "en" });
+  assert.equal((await long.json()).error.code, "too_long");
+  assert.equal(out.length, 2, "a foreign page, a bad body and a message over the cap write nothing");
+});
+
+test("the twenty-first message is kept as busy", async () => {
+  const { out, log } = lines();
+  const base = await listen({ log });
+  const headers = { "x-forwarded-for": "203.0.113.9, 35.0.0.1" };
+  for (let i = 0; i < 20; i++) await (await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, headers)).text();
+  assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, headers)).status, 429);
+  assert.equal(out.length, 21);
+  assert.equal(JSON.parse(out[20]).refused, "busy");
+  assert.ok(out.every((l) => !l.includes("203.0.113.9")), "no address in any line");
+});
+
+test("a question with a newline, a quote and a backslash is one line that parses back, and no lang is null", async () => {
+  const { out, log } = lines();
+  const base = await listen({ log });
+  const question = "Was ist \"das\"?\nUnd \\ dann?";
+  await (await post(base, { messages: [{ role: "user", content: question }] })).text();
+  assert.equal(out.length, 1);
+  assert.ok(!out[0].includes("\n"), "one line");
+  const line = JSON.parse(out[0]);
+  assert.equal(line.question, question);
+  assert.equal(line.lang, null);
+});
+
+test("a busy refusal keeps no question the shape would refuse, and keeps the accepted one trimmed", async () => {
+  const { out, log } = lines();
+  const base = await listen({ log });
+  const headers = { "x-forwarded-for": "203.0.113.21, 35.0.0.1" };
+  for (let i = 0; i < 20; i++) await (await post(base, { messages: [{ role: "user", content: "  hi  " }], lang: "en" }, headers)).text();
+  assert.equal(JSON.parse(out[0]).question, "hi", "an accepted question is kept trimmed");
+  const long = await post(base, { messages: [{ role: "user", content: "x".repeat(1001) }], lang: "en" }, headers);
+  assert.equal(long.status, 429);
+  const wrongRole = await post(base, { messages: [{ role: "assistant", content: "hi" }], lang: "en" }, headers);
+  assert.equal(wrongRole.status, 429);
+  const padded = await post(base, { messages: [{ role: "user", content: " ".repeat(50000) + "hi" }], lang: "en" }, headers);
+  assert.equal(padded.status, 429);
+  assert.equal(out.length, 21, "twenty answers and one busy line for the padded question, nothing for the two the shape refuses");
+  assert.deepEqual(JSON.parse(out[20]), { kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
+});
+
+test("a visitor who leaves mid-answer is kept with what the loop had, not as internal", async () => {
+  const { out, log } = lines();
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  after(() => { console.error = original; });
+  const model = {
+    name: "fake",
+    turn: (req, onText, { signal }) => new Promise((resolve, reject) => {
+      onText("Looking…");
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })));
+    }),
+  };
+  const base = await listen({ model, log });
+  const ac = new AbortController();
+  const r = await fetch(`${base}/chat`, { method: "POST", headers: { "content-type": "application/json", origin: "https://site.test", "x-chat": "1" }, body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], lang: "en" }), signal: ac.signal });
+  const reader = r.body.getReader();
+  await reader.read();
+  ac.abort();
+  const until = Date.now() + 5000;
+  while (out.length === 0 && Date.now() < until) await new Promise((res) => setTimeout(res, 20));
+  assert.equal(out.length, 1);
+  const line = JSON.parse(out[0]);
+  assert.equal(line.refused, null);
+  assert.equal(line.rounds, 0, "a turn the model never answered is not a round");
+  assert.ok(!errors.some((e) => e.includes("chat: internal")), "leaving is not a fault");
 });

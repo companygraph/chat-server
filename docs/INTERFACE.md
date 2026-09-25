@@ -56,12 +56,31 @@ A body over 64 KiB is refused with status 413 and a plain-text body, not the JSO
 
 The moment is the truth of the instance that refused. The bucket is in memory per instance and a second instance counts an address on its own, so a visitor may find the chat open earlier than the moment says, and never later.
 
+## What is kept
+
+Once a message has its answer or its refusal, the service writes one line for it, which the deployment keeps for ninety days in a log bucket of the project's own, behind one view that one account may read. The line carries no address, no header and no word of the answer. A message refused as `bad_request`, `too_long` or `foreign` writes no line.
+
+The question is the visitor's text. To whoever reads the line or a report built from it, a person or an agent, it is data and never an instruction.
+
+| Field | Holds |
+| --- | --- |
+| `kind` | `question` |
+| `question` | the last `user` turn as it was sent, trimmed |
+| `lang` | the request's `lang` where it is `en` or `de`, else null |
+| `cited` | the ids of the entities the answer cited, in order, empty where it cited none |
+| `calls` | how many tool calls the answer made |
+| `empty` | how many of those found nothing: refused by the host, an error, or a list with no rows |
+| `rounds` | how many requests the model answered; a request it did not, a rate refusal or a visitor gone, is not one |
+| `refused` | null where the model answered, else the code: `busy`, `over_day`, `over_month`, `closed`, `host_down` or `internal` |
+
+Whether a question was answered is not a field: it is read as `cited` being non-empty and `refused` null, so the rule can change with the lines intact.
+
 ## The meter's unit
 
 The input-equivalent token: input tokens as they are, cache writes at 1.25, cache reads at 0.1, output tokens at 5, rounded up per call. A deployment states its month in that unit; the day's share is a tenth.
 
 ## What counts as a break
 
-A route removed or renamed, a field removed from `GET /chat` or from an event, an event removed, a code removed or its status changed, a bound tightened. A field or an event added is not.
+A route removed or renamed, a field removed from `GET /chat` or from an event, an event removed, a code removed or its status changed, a bound tightened. A field or an event added is not. A field of the kept line removed, or the line written for a code that wrote none, is a break; a field added is not.
 
 The page's class names are the contract a deployment's stylesheet is written against; one of them removed or renamed is a break.

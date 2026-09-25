@@ -1,0 +1,31 @@
+# The week's report of a deployment's chat questions, called by the release chat/package.json
+# pins on the deployment's own schedule. The run acts as the project's chat-analyst through the
+# pool the MCP host's bootstrap made, which admits a run on main, and a schedule runs on main.
+# The log here carries counts and never a question: a public repository's log is public.
+name: report
+on:
+  workflow_call:
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: chat
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          jq -r '"PROJECT=\(.project)\nPROJECT_NUMBER=\(.project_number)"' ../deployment.json >> "$GITHUB_ENV"
+      - run: |
+          echo "WIF_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/github" >> "$GITHUB_ENV"
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: chat-analyst@${{ env.PROJECT }}.iam.gserviceaccount.com
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx companygraph-chat-deploy report
