@@ -387,8 +387,11 @@ test("a title alone longer than the cap is logged once, naming CHAT_QUESTION_IND
       console.error = origError;
     }
     assert.equal(logs.length, 1, `logged once, not per request; logged ${logs.length} times`);
-    assert.equal(logs[0][0], "chat: question index");
-    assert.match(logs[0][1], /CHAT_QUESTION_INDEX_CHARS/);
+    const warned = JSON.parse(logs[0][0]);
+    assert.equal(warned["logging.googleapis.com/labels"].logger, "chat.index");
+    assert.equal(warned.severity, "WARNING");
+    assert.match(warned.message, /CHAT_QUESTION_INDEX_CHARS/);
+    assert.equal(typeof warned.cap, "number");
   } finally {
     await h.close();
   }

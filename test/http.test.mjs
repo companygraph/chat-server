@@ -372,5 +372,23 @@ test("a visitor who leaves mid-answer is kept with what the loop had, not as int
   const line = JSON.parse(out[0]);
   assert.equal(line.refused, null);
   assert.equal(line.rounds, 0, "a turn the model never answered is not a round");
-  assert.ok(!errors.some((e) => e.includes("chat: internal")), "leaving is not a fault");
+  assert.ok(!errors.some((e) => e.includes("chat.error")), "leaving is not a fault");
+});
+
+test("a fault while answering is one JSON line under chat.error, with the error's name and no word of the visitor's", async () => {
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  after(() => { console.error = original; });
+  const { out, log } = lines();
+  const base = await listen({ model: { name: "fake", async turn() { throw new Error("boom"); } }, log });
+  const body = await (await post(base, { messages: [{ role: "user", content: "secret words" }], lang: "en" })).text();
+  assert.match(body, /"code":"internal"/);
+  const faults = errors.filter((e) => e.includes("chat.error")).map((e) => JSON.parse(e));
+  assert.equal(faults.length, 1);
+  assert.equal(faults[0].severity, "ERROR");
+  assert.deepEqual(faults[0]["logging.googleapis.com/labels"], { logger: "chat.error" });
+  assert.equal(faults[0].name, "Error");
+  assert.ok(!errors.join("").includes("secret words"), "no visitor text on standard error");
+  assert.equal(JSON.parse(out[0]).refused, "internal", "and the question is kept as refused internal");
 });
