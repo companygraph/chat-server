@@ -319,3 +319,47 @@ test("a question with a newline, a quote and a backslash is one line that parses
   assert.equal(line.question, question);
   assert.equal(line.lang, null);
 });
+
+test("a busy refusal keeps no question the shape would refuse, and keeps the accepted one trimmed", async () => {
+  const { out, log } = lines();
+  const base = await listen({ log });
+  const headers = { "x-forwarded-for": "203.0.113.21, 35.0.0.1" };
+  for (let i = 0; i < 20; i++) await (await post(base, { messages: [{ role: "user", content: "  hi  " }], lang: "en" }, headers)).text();
+  assert.equal(JSON.parse(out[0]).question, "hi", "an accepted question is kept trimmed");
+  const long = await post(base, { messages: [{ role: "user", content: "x".repeat(1001) }], lang: "en" }, headers);
+  assert.equal(long.status, 429);
+  const wrongRole = await post(base, { messages: [{ role: "assistant", content: "hi" }], lang: "en" }, headers);
+  assert.equal(wrongRole.status, 429);
+  const padded = await post(base, { messages: [{ role: "user", content: " ".repeat(50000) + "hi" }], lang: "en" }, headers);
+  assert.equal(padded.status, 429);
+  assert.equal(out.length, 21, "twenty answers and one busy line for the padded question, nothing for the two the shape refuses");
+  assert.deepEqual(JSON.parse(out[20]), { kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
+});
+
+test("a visitor who leaves mid-answer is kept with what the loop had, not as internal", async () => {
+  const { out, log } = lines();
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  after(() => { console.error = original; });
+  const model = {
+    name: "fake",
+    turn: (req, onText, { signal }) => new Promise((resolve, reject) => {
+      onText("Looking…");
+      signal.addEventListener("abort", () => reject(Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })));
+    }),
+  };
+  const base = await listen({ model, log });
+  const ac = new AbortController();
+  const r = await fetch(`${base}/chat`, { method: "POST", headers: { "content-type": "application/json", origin: "https://site.test", "x-chat": "1" }, body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], lang: "en" }), signal: ac.signal });
+  const reader = r.body.getReader();
+  await reader.read();
+  ac.abort();
+  const until = Date.now() + 5000;
+  while (out.length === 0 && Date.now() < until) await new Promise((res) => setTimeout(res, 20));
+  assert.equal(out.length, 1);
+  const line = JSON.parse(out[0]);
+  assert.equal(line.refused, null);
+  assert.equal(line.rounds, 0, "a turn the model never answered is not a round");
+  assert.ok(!errors.some((e) => e.includes("chat: internal")), "leaving is not a fault");
+});
