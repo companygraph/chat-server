@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekOf, answered, renderReport, listEntries, runReport } from "../lib/report.mjs";
+import { weekOf, weekRange, answered, renderReport, listEntries, runReport } from "../lib/report.mjs";
 
 const entry = (over = {}) => ({ timestamp: "2026-09-23T10:00:00Z", kind: "question", question: "What is it?", lang: "en", cited: ["e1"], calls: 1, empty: 0, rounds: 2, refused: null, ...over });
 
@@ -9,6 +9,13 @@ test("weekOf names the ISO week in UTC, across a year's edge", () => {
   assert.equal(weekOf(new Date("2026-09-28T00:00:00Z")), "2026-W40");
   assert.equal(weekOf(new Date("2027-01-01T12:00:00Z")), "2026-W53");
   assert.equal(weekOf(new Date("2027-01-04T12:00:00Z")), "2027-W01");
+});
+
+test("weekRange is the ISO week's Monday midnight UTC to the next, and refuses a name that is not a week", () => {
+  assert.deepEqual(weekRange("2026-W39"), { from: new Date("2026-09-21T00:00:00Z"), to: new Date("2026-09-28T00:00:00Z") });
+  assert.deepEqual(weekRange("2027-W01"), { from: new Date("2027-01-04T00:00:00Z"), to: new Date("2027-01-11T00:00:00Z") });
+  assert.deepEqual(weekRange("2026-W53"), { from: new Date("2026-12-28T00:00:00Z"), to: new Date("2027-01-04T00:00:00Z") });
+  for (const bad of ["2026-W54", "2026-W00", "2026-39", "W39", "2025-W53", "last week"]) assert.throws(() => weekRange(bad), /a week is YYYY-Www/, bad);
 });
 
 test("answered is a non-empty cited list and no refusal", () => {
@@ -77,9 +84,9 @@ test("listEntries follows nextPageToken to the end and keeps only question entri
   assert.equal(bodies[1].pageToken, "p2");
 });
 
-test("runReport reads seven days back, names the week that ended, writes the file and prints counts only", async () => {
+test("runReport covers the ISO week that holds yesterday, whatever the hour it runs, writes the file and prints counts only", async () => {
   const calls = { list: [], put: [], out: [] };
-  const now = new Date("2026-09-28T06:00:00Z");
+  const now = new Date("2026-09-28T09:47:00Z");
   const r = await runReport({
     list: async (range) => { calls.list.push(range); return [entry(), entry({ question: "secret words", cited: [] })]; },
     put: async (name, text) => { calls.put.push({ name, text }); },
@@ -87,10 +94,26 @@ test("runReport reads seven days back, names the week that ended, writes the fil
     out: (s) => calls.out.push(s),
   });
   assert.deepEqual(r, { week: "2026-W39", total: 2, answered: 1 });
-  assert.deepEqual(calls.list[0], { from: new Date("2026-09-21T06:00:00Z"), to: now });
+  assert.deepEqual(calls.list[0], { from: new Date("2026-09-21T00:00:00Z"), to: new Date("2026-09-28T00:00:00Z") });
   assert.equal(calls.put[0].name, "reports/2026-W39.md");
   assert.match(calls.put[0].text, /secret words/);
   assert.equal(calls.out.length, 1);
   assert.match(calls.out[0], /2026-W39: 2 questions, 1 answered/);
   assert.ok(!calls.out.join("").includes("secret words"), "no question on standard output");
+});
+
+test("runReport on a Sunday night names the week still running, so Monday's run rewrites the same file complete", async () => {
+  const calls = [];
+  const r = await runReport({ list: async (range) => { calls.push(range); return []; }, put: async () => {}, now: new Date("2026-09-27T23:30:00Z"), out: () => {} });
+  assert.equal(r.week, "2026-W39");
+  assert.deepEqual(calls[0], { from: new Date("2026-09-21T00:00:00Z"), to: new Date("2026-09-28T00:00:00Z") });
+});
+
+test("runReport takes a week by name and rebuilds it, and refuses a name that is not a week", async () => {
+  const calls = { list: [], put: [] };
+  const r = await runReport({ list: async (range) => { calls.list.push(range); return [entry()]; }, put: async (name) => { calls.put.push(name); }, now: new Date("2026-09-28T06:00:00Z"), out: () => {}, week: "2026-W37" });
+  assert.deepEqual(r, { week: "2026-W37", total: 1, answered: 1 });
+  assert.deepEqual(calls.list[0], { from: new Date("2026-09-07T00:00:00Z"), to: new Date("2026-09-14T00:00:00Z") });
+  assert.deepEqual(calls.put, ["reports/2026-W37.md"]);
+  await assert.rejects(runReport({ list: async () => [], put: async () => {}, week: "yesterday" }), /a week is YYYY-Www/);
 });

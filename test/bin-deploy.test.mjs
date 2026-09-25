@@ -24,8 +24,15 @@ test("report outside a deployment is one line on stderr and exit 2", async () =>
   assert.ok(!err.includes("    at "), "no stack");
 });
 
+test("report with a name that is not a week says what a week is, before it looks for a deployment", async () => {
+  const { code, err } = await run(["report", "last-week"], os.tmpdir());
+  assert.equal(code, 2);
+  assert.match(err, /a week is YYYY-Www/);
+  assert.ok(!err.includes("deployment.json"), "the week is checked first");
+});
+
 test("an unknown command names report among the commands", async () => {
   const { code, err } = await run(["nothing"], os.tmpdir());
   assert.equal(code, 2);
-  assert.match(err, /usage: companygraph-chat-deploy <page-css\|tag\|serve\|report>/);
+  assert.match(err, /usage: companygraph-chat-deploy <page-css\|tag\|serve\|report \[week\]>/);
 });
