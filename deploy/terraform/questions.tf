@@ -25,16 +25,21 @@ resource "google_logging_log_view" "questions" {
 }
 
 resource "google_logging_project_sink" "questions" {
+  project                = var.project
   name                   = "chat-questions"
   destination            = "logging.googleapis.com/${google_logging_project_bucket_config.questions.id}"
   filter                 = local.questions_filter
   unique_writer_identity = true
 }
 
+# Depends on the sink so an apply never opens a window where the exclusion already drops entries
+# from _Default while the sink does not yet exist to carry them into the bucket instead.
 resource "google_logging_project_exclusion" "questions" {
+  project     = var.project
   name        = "chat-questions"
   description = "The questions live in their own bucket, under their own retention"
   filter      = local.questions_filter
+  depends_on  = [google_logging_project_sink.questions]
 }
 
 # The reader: one account holding the view and the reports bucket and nothing else, not the
@@ -63,19 +68,24 @@ resource "google_service_account_iam_member" "analyst_wif" {
   member             = local.main_runs
 }
 
-# The reports: private, in the region, and gone at ninety days, so a question quoted in a report
-# outlives the entry it came from by nothing.
+# The reports: private, in the region, and gone at eighty-three days with no soft-delete
+# retention, since a report quotes questions up to a week old, so a question quoted in a report
+# is gone ninety days after it was asked and the promise has one number.
 resource "google_storage_bucket" "reports" {
+  project                     = var.project
   name                        = "chat-reports-${var.project}"
   location                    = var.region
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
   lifecycle_rule {
     action {
       type = "Delete"
     }
     condition {
-      age = 90
+      age = 83
     }
   }
   depends_on = [google_project_service.chat]
