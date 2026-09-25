@@ -248,7 +248,9 @@ test("a body with no length is counted as it arrives, cut off at the cap, and th
 // The line the log keeps of a question: the words, the language, and what the loop saw. It is
 // written once the visitor has their answer or their refusal, never for a body that carried no
 // question the shape accepts, and it carries no address and no word of the answer.
-const KEYS = ["kind", "question", "lang", "cited", "calls", "empty", "rounds", "refused"];
+const KEYS = ["severity", "logging.googleapis.com/labels", "kind", "question", "lang", "cited", "calls", "empty", "rounds", "refused"];
+// The two keys before kind are Cloud Logging's: it lifts them out of the payload into the entry's severity and labels, so the console filters the line as labels.logger="chat.question".
+const HEAD = { severity: "INFO", "logging.googleapis.com/labels": { logger: "chat.question" } };
 const lines = () => { const out = []; return { out, log: (s) => out.push(s) }; };
 const tools = (...turns) => ({ name: "fake", async turn(req, onText) { const t = turns.shift(); for (const c of t.content) if (c.type === "text") onText(c.text); return t; } });
 const toolTurn = (name, input) => ({ content: [{ type: "tool_use", id: `tu_${name}`, name, input }], stop_reason: "tool_use", usage });
@@ -263,7 +265,7 @@ test("an answered question is kept as one line with the words, the language and 
   assert.equal(out.length, 1);
   const line = JSON.parse(out[0]);
   assert.deepEqual(Object.keys(line), KEYS);
-  assert.deepEqual(line, { kind: "question", question: "What is it?", lang: "de", cited: [rootId], calls: 1, empty: 0, rounds: 2, refused: null });
+  assert.deepEqual(line, { ...HEAD, kind: "question", question: "What is it?", lang: "de", cited: [rootId], calls: 1, empty: 0, rounds: 2, refused: null });
   assert.ok(!out[0].includes("203.0.113.77"), "no address in the line");
   assert.ok(!out[0].includes("It is the company"), "no word of the answer in the line");
 });
@@ -293,7 +295,7 @@ test("a refusal after the question was read is kept with its code, and one befor
   const meter = new Meter(new MemoryStore(), { monthTokens: 100 });
   const base = await listen({ cfg: config({ monthTokens: 100 }), meter, log });
   assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 429);
-  assert.deepEqual(JSON.parse(out[0]), { kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "over_month" });
+  assert.deepEqual(JSON.parse(out[0]), { ...HEAD, kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "over_month" });
   await meter.store.transact((d) => ({ ...d, closed: true }));
   assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 503);
   assert.equal(JSON.parse(out[1]).refused, "closed");
@@ -342,7 +344,7 @@ test("a busy refusal keeps no question the shape would refuse, and keeps the acc
   const padded = await post(base, { messages: [{ role: "user", content: " ".repeat(50000) + "hi" }], lang: "en" }, headers);
   assert.equal(padded.status, 429);
   assert.equal(out.length, 21, "twenty answers and one busy line for the padded question, nothing for the two the shape refuses");
-  assert.deepEqual(JSON.parse(out[20]), { kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
+  assert.deepEqual(JSON.parse(out[20]), { ...HEAD, kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
 });
 
 test("a visitor who leaves mid-answer is kept with what the loop had, not as internal", async () => {
