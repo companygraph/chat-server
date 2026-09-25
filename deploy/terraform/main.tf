@@ -16,6 +16,8 @@ resource "google_project_service" "chat" {
     "aiplatform.googleapis.com",
     "firestore.googleapis.com",
     "secretmanager.googleapis.com",
+    "logging.googleapis.com",
+    "storage.googleapis.com",
   ])
   service                    = each.value
   disable_on_destroy         = false
