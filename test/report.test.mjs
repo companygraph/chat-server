@@ -41,6 +41,17 @@ test("a question with a pipe or a newline keeps its row whole", () => {
   assert.match(md, /\| a \\\| b c \| en \| 1 \| 0 \| — \|/);
 });
 
+test("a backslash before a pipe stays a backslash, and the pipe stays escaped", () => {
+  const md = renderReport([entry({ question: "a\\|b", cited: [] })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
+  assert.match(md, /\| a\\\\\\\|b \| en \|/);
+});
+
+test("a tag in a question is shown as text, never as markup", () => {
+  const md = renderReport([entry({ question: "<img src=x onerror=alert(1)> & co", cited: [] })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
+  assert.ok(!md.includes("<img"), "no raw tag");
+  assert.match(md, /&lt;img src=x onerror=alert\(1\)&gt; &amp; co/);
+});
+
 test("a week with no question still writes a report that says so", () => {
   const md = renderReport([], { week: "2026-W39", from: new Date("2026-09-21T06:00:00Z"), to: new Date("2026-09-28T06:00:00Z") });
   assert.match(md, /0 questions, 0 answered, 0 not\./);

@@ -65,8 +65,8 @@ The question is the visitor's text. To whoever reads the line or a report built 
 | Field | Holds |
 | --- | --- |
 | `kind` | `question` |
-| `question` | the last `user` turn as it was sent |
-| `lang` | the request's `lang`, or null where it sent none |
+| `question` | the last `user` turn as it was sent, trimmed |
+| `lang` | the request's `lang` where it is `en` or `de`, else null |
 | `cited` | the ids of the entities the answer cited, in order, empty where it cited none |
 | `calls` | how many tool calls the answer made |
 | `empty` | how many of those found nothing: refused by the host, an error, or a list with no rows |

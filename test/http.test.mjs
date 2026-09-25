@@ -268,6 +268,15 @@ test("an answered question is kept as one line with the words, the language and 
   assert.ok(!out[0].includes("It is the company"), "no word of the answer in the line");
 });
 
+test("a lang the interface does not name is kept as null, so the line holds nothing unbounded but the question", async () => {
+  const { out, log } = lines();
+  const base = await listen({ model: tools(textTurn("Hello.")), log });
+  await (await post(base, { messages: [{ role: "user", content: "hi" }], lang: "x".repeat(50_000) })).text();
+  assert.equal(out.length, 1);
+  assert.equal(JSON.parse(out[0]).lang, null);
+  assert.ok(out[0].length < 1_000, "the line is bounded");
+});
+
 test("a question the model could not find is kept with an empty cited list and the empty count", async () => {
   const { out, log } = lines();
   const base = await listen({ model: tools(toolTurn("search", { query: "xqzv wvkq", match: "words" }), textTurn("The model does not say.")), log });
