@@ -37,7 +37,7 @@
     "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
-    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.29.0",
+    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.29.1",
     "playwright": "^1.63.0"
   }
 }
