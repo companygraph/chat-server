@@ -18,11 +18,16 @@ test("weekRange is the ISO week's Monday midnight UTC to the next, and refuses a
   for (const bad of ["2026-W54", "2026-W00", "2026-39", "W39", "2025-W53", "last week"]) assert.throws(() => weekRange(bad), /a week is YYYY-Www/, bad);
 });
 
-test("answered is a non-empty cited list and no refusal", () => {
+test("answered is no refusal and either something cited or a call that found something", () => {
   assert.equal(answered(entry()), true);
-  assert.equal(answered(entry({ cited: [] })), false);
   assert.equal(answered(entry({ refused: "over_day" })), false);
   assert.equal(answered(entry({ cited: ["e1"], refused: "host_down" })), false);
+  // A list answer cites nothing, since a cite is made only from an entity answer, yet the model
+  // had the rows: the calls that found something say so.
+  assert.equal(answered(entry({ cited: [], calls: 4, empty: 1 })), true);
+  assert.equal(answered(entry({ cited: [], calls: 2, empty: 2 })), false, "every call found nothing");
+  assert.equal(answered(entry({ cited: [], calls: 0, empty: 0 })), false, "the model asked no tool");
+  assert.equal(answered(entry({ cited: [], calls: undefined, empty: undefined })), false, "a line without the counts");
 });
 
 test("the report counts, splits by language, ranks the cited and lists the unanswered in full", () => {
@@ -44,17 +49,17 @@ test("the report counts, splits by language, ranks the cited and lists the unans
 });
 
 test("a question with a pipe or a newline keeps its row whole", () => {
-  const md = renderReport([entry({ question: "a | b\nc", cited: [] })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
-  assert.match(md, /\| a \\\| b c \| en \| 1 \| 0 \| — \|/);
+  const md = renderReport([entry({ question: "a | b\nc", cited: [], empty: 1 })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
+  assert.match(md, /\| a \\\| b c \| en \| 1 \| 1 \| — \|/);
 });
 
 test("a backslash before a pipe stays a backslash, and the pipe stays escaped", () => {
-  const md = renderReport([entry({ question: "a\\|b", cited: [] })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
+  const md = renderReport([entry({ question: "a\\|b", cited: [], empty: 1 })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
   assert.match(md, /\| a\\\\\\\|b \| en \|/);
 });
 
 test("a tag in a question is shown as text, never as markup", () => {
-  const md = renderReport([entry({ question: "<img src=x onerror=alert(1)> & co", cited: [] })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
+  const md = renderReport([entry({ question: "<img src=x onerror=alert(1)> & co", cited: [], empty: 1 })], { week: "2026-W39", from: new Date(0), to: new Date(0) });
   assert.ok(!md.includes("<img"), "no raw tag");
   assert.match(md, /&lt;img src=x onerror=alert\(1\)&gt; &amp; co/);
 });
@@ -88,7 +93,7 @@ test("runReport covers the ISO week that holds yesterday, whatever the hour it r
   const calls = { list: [], put: [], out: [] };
   const now = new Date("2026-09-28T09:47:00Z");
   const r = await runReport({
-    list: async (range) => { calls.list.push(range); return [entry(), entry({ question: "secret words", cited: [] })]; },
+    list: async (range) => { calls.list.push(range); return [entry(), entry({ question: "secret words", cited: [], empty: 1 })]; },
     put: async (name, text) => { calls.put.push({ name, text }); },
     now,
     out: (s) => calls.out.push(s),

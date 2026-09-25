@@ -75,7 +75,7 @@ Every line the service writes is one JSON object that opens with a severity and 
 | `rounds` | how many requests the model answered; a request it did not, a rate refusal or a visitor gone, is not one |
 | `refused` | null where the model answered, else the code: `busy`, `over_day`, `over_month`, `closed`, `host_down` or `internal` |
 
-Whether a question was answered is not a field: it is read as `cited` being non-empty and `refused` null, so the rule can change with the lines intact.
+Whether a question was answered is not a field: it is read as `refused` null and either `cited` non-empty or `calls` above `empty`, since a list answer cites nothing though the model had every row, and the rule can change with the lines intact.
 
 ## The meter's unit
 
