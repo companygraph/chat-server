@@ -13,7 +13,7 @@ test("the process starts from the environment with a memory meter and a fake mod
   const env = { ...process.env, CHAT_MCP_URL: fixture.url, CHAT_ORIGINS: "https://site.test", CHAT_MONTH_TOKENS: "1000000", CHAT_PROJECT: "p", CHAT_REGION: "eu", CHAT_METER: "memory", PORT: "0" };
   const child = spawn(process.execPath, [bin, "--model", "fake"], { env });
   after(() => child.kill());
-  const line = await new Promise((resolve) => child.stdout.on("data", (d) => { const m = /companygraph-chat-http on :(\d+)/.exec(String(d)); if (m) resolve(m[1]); }));
+  const line = await new Promise((resolve) => child.stdout.on("data", (d) => { for (const l of String(d).split("\n")) if (l.includes("chat.start")) { const j = JSON.parse(l); assert.equal(j.severity, "INFO"); assert.match(j.message, /companygraph-chat-http on :/); resolve(String(j.port)); } }));
   const r = await fetch(`http://127.0.0.1:${line}/chat`);
   assert.equal(r.status, 200);
   assert.equal((await r.json()).mcp_url, fixture.url);

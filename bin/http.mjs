@@ -5,6 +5,7 @@
 // stack. `--model fake` answers every message with one sentence and calls no tool, for a local
 // run without Vertex; `--meter` is CHAT_METER's, and `memory` is the local case.
 import fs from "node:fs";
+import { line } from "../lib/log.mjs";
 import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
@@ -44,7 +45,8 @@ try {
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
-    console.log(`companygraph-chat-http on :${this.address().port}, host ${config.mcpUrl} at ${host.provenance?.commit ?? "(none)"}, model ${model.name} via ${model.provider}, meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`);
+    const port = this.address().port, commit = host.provenance?.commit ?? null;
+    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider}, meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null }));
   });
 } catch (err) {
   console.error(err.message);

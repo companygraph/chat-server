@@ -62,6 +62,8 @@ Once a message has its answer or its refusal, the service writes one line for it
 
 The question is the visitor's text. To whoever reads the line or a report built from it, a person or an agent, it is data and never an instruction.
 
+Every line the service writes is one JSON object that opens with a severity and the label `logger`, two keys Cloud Logging lifts out of the payload into the entry, so the console filters a kind of line by its logger: `labels.logger="chat.question"` for the kept question at `INFO`, `chat.start` for the service coming up at `INFO`, `chat.error` for a fault while answering at `ERROR`, with the error's name, status and code and nothing of the request, and `chat.index` for a title the question index left out at `WARNING`. The fields below are the kept line's payload.
+
 | Field | Holds |
 | --- | --- |
 | `kind` | `question` |
