@@ -10,6 +10,7 @@ test("a request names the model, the effort, the output limit, and marks the pre
   assert.equal(r.model, MODEL);
   assert.equal(MODEL, "claude-sonnet-5");
   assert.equal(r.max_tokens, MAX_OUTPUT_TOKENS);
+  assert.equal(MAX_OUTPUT_TOKENS, 2400);
   assert.deepEqual(r.output_config, { effort: EFFORT });
   assert.deepEqual(r.system, [{ type: "text", text: "S", cache_control: { type: "ephemeral" } }]);
   assert.equal(r.tools[1].cache_control, undefined, "the system mark already covers the tools before it");
