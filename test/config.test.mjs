@@ -61,3 +61,34 @@ test("a key names the provider; none means Vertex", () => {
   assert.equal(c.provider, "anthropic");
   assert.equal(configFromEnv({ ...full, ANTHROPIC_API_KEY: "  " }).provider, "vertex", "a blank key is no key");
 });
+
+const ids = {
+  ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01test",
+  ANTHROPIC_ORGANIZATION_ID: "00000000-0000-4000-8000-000000000000",
+  ANTHROPIC_SERVICE_ACCOUNT_ID: "svac_01test",
+};
+
+test("three federation ids name the Anthropic provider without a key, and the workspace is optional", () => {
+  const c = configFromEnv({ ...full, ...ids });
+  assert.equal(c.provider, "anthropic");
+  assert.equal(c.credential, "federation");
+  assert.equal(c.anthropicKey, null);
+  assert.deepEqual(c.anthropicFederation, { ruleId: "fdrl_01test", organizationId: "00000000-0000-4000-8000-000000000000", serviceAccountId: "svac_01test", workspaceId: null });
+  assert.equal(configFromEnv({ ...full, ...ids, ANTHROPIC_WORKSPACE_ID: " wrkspc_01test " }).anthropicFederation.workspaceId, "wrkspc_01test");
+});
+
+test("the credential is named on every path", () => {
+  assert.equal(configFromEnv(full).credential, "google");
+  assert.equal(configFromEnv(full).anthropicFederation, null);
+  assert.equal(configFromEnv({ ...full, ANTHROPIC_API_KEY: "sk-ant-test" }).credential, "key");
+});
+
+test("a key beside the federation ids is refused, since the key would win without a word", () => {
+  assert.throws(() => configFromEnv({ ...full, ...ids, ANTHROPIC_API_KEY: "sk-ant-test" }), /ANTHROPIC_API_KEY and ANTHROPIC_FEDERATION_RULE_ID are both set/);
+});
+
+test("a partial set of federation ids names each one missing, and a workspace alone is refused", () => {
+  assert.throws(() => configFromEnv({ ...full, ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01test" }), /ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_SERVICE_ACCOUNT_ID are not set/);
+  assert.throws(() => configFromEnv({ ...full, ...ids, ANTHROPIC_SERVICE_ACCOUNT_ID: "  " }), /ANTHROPIC_SERVICE_ACCOUNT_ID is not set/);
+  assert.throws(() => configFromEnv({ ...full, ANTHROPIC_WORKSPACE_ID: "wrkspc_01test" }), /ANTHROPIC_WORKSPACE_ID is set without/);
+});

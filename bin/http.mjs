@@ -20,6 +20,7 @@ const ICON_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "imag
 const fakeModel = {
   name: "fake",
   provider: "fake",
+  credential: "none",
   async turn(request, onText) {
     const text = "This is a local run without a model; the host answered the handshake and nothing was asked of it.";
     onText(text);
@@ -46,7 +47,7 @@ try {
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
     const port = this.address().port, commit = host.provenance?.commit ?? null;
-    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider}, meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null }));
+    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null }));
   });
 } catch (err) {
   console.error(err.message);
