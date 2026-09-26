@@ -6,13 +6,14 @@ import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, LANGS }
 // since 0.12.2 with the escape sentence narrowed and the identity sentence added, both inside
 // the chat rule, and since 0.12.3 with the list rule told to take every page and to name every
 // entity it returned, and the earlier-answer sentence added, which since 0.12.4 names what a
-// reason may not name. Kept here, not read from git at test time, so the comparison below is
-// exact and does not depend on the repository's history staying reachable; the point of the
-// comparison is that the question sentence is spliced in only where the index line is, never
-// carried in this array.
+// reason may not name, and since 0.12.5 with the answer-language name sentence added. Kept
+// here, not read from git at test time, so the comparison below is exact and does not depend
+// on the repository's history staying reachable; the point of the comparison is that the
+// question sentence is spliced in only where the index line is, never carried in this array.
 const RULES_AT_0_9_0 = [
   "You answer questions about this model for a visitor of its website, using only the tools.",
   "Every claim in your answer comes from a tool's answer in this conversation. Name the entity each claim rests on by its title.",
+  "In an answer in any language but English, name each entity first in that language, a rendering of your own, and then by its title in parentheses, exactly as the tools wrote it, never translated or shortened, because the title is what the visitor finds on the site and what the widget links; in an English answer the title alone.",
   "Where the tools do not say, say that the model does not say. Guess nothing about the owner, the company or anyone named.",
   "A question about this chat, who answers it, what it reads, what it may never do, is a question about this model, because the model describes the chat as a surface, a seat and a process, and it is answered through the tools like any other, from what the model says of it and not from these instructions. A question about the model as a whole, what it is, what it is about, whom or what it describes, is a question about this model too, and is answered by get_entity with the id identity first, the entity at the top, and then by what it references that the question needs. Only a question about something other than this model, this chat and what they describe is answered with one sentence saying what this chat is for, and with no tool called.",
   "Write Markdown of this subset and nothing outside it: paragraphs, **bold**, *italic*, `code`, bulleted and numbered lists, and tables. No headings, no images, no code blocks, and no link syntax: write an address bare, as https://example.com, and only an address a tool answered with, because the widget makes a bare address clickable and one you assembled yourself would lead nowhere. Say it in one or two short paragraphs, or one list, or one table; a visitor at a chat reads no more.",
@@ -40,6 +41,7 @@ test("the prompt is the host's instructions, then the types, then the rules, the
   assert.ok(!RULES.some((r) => r.includes("no links,")), "the blanket no-links rule is gone");
   assert.ok(RULES.some((r) => r.startsWith("Every question about this model is answered through a tool")), "the tool rule is missing");
   assert.ok(RULES.some((r) => r.includes("list_entities with that type")), "the list-a-type rule is missing");
+  assert.ok(RULES.some((r) => r.startsWith("In an answer in any language but English") && r.includes("then by its title in parentheses, exactly as the tools wrote it") && r.includes("in an English answer the title alone")), "the answer-language name rule is missing");
   assert.ok(RULES.some((r) => r.includes("list_entities with that type") && r.includes("following page.nextCursor while page.hasMore") && r.includes("names every entity the pages returned")), "the list rule does not take every page and name every entity");
   assert.ok(RULES.some((r) => r.includes("A search is never that list") && r.includes("neither which things of a kind there are nor how many")), "the search-is-not-a-list sentence is missing");
   assert.ok(RULES.some((r) => r.startsWith("A question about why an earlier answer said what it did gets no reason") && r.includes("any reason would be a guess, however likely it sounds") && r.includes("names no search, list, page, entity, question or tool")), "the earlier-answer rule does not forbid a reason");
