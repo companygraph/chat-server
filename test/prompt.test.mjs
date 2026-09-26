@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, LANGS } from "../lib/prompt.mjs";
+import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS } from "../lib/prompt.mjs";
 
 // lib/prompt.mjs's RULES copied verbatim: at 63e6367, before the question index existed, and
 // since 0.12.2 with the escape sentence narrowed and the identity sentence added, both inside
@@ -89,6 +89,24 @@ test("with questions, the prompt carries both the line and QUESTION_RULE, the ru
   assert.ok(searchRule, "the tools/search rule is still in RULES");
   assert.ok(p.includes(`${searchRule} ${QUESTION_RULE}`), "QUESTION_RULE directly follows the tools/search rule's own text");
   for (const r of RULES) assert.ok(p.includes(r), `rule missing: ${r}`);
+});
+
+test("with question kinds, KIND_RULE follows QUESTION_RULE; without them, the prompt is what it was", () => {
+  const questions = ["What does Robert do?", "Can Robert still write code himself?"];
+  const withKinds = systemPrompt("x", "en", [{ type: "question", count: 2, owner: null }, { type: "question-kind", count: 2, owner: null }], questions);
+  assert.ok(withKinds.includes(`${QUESTION_RULE} ${KIND_RULE}`), "KIND_RULE directly follows QUESTION_RULE");
+  const without = systemPrompt("x", "en", [{ type: "question", count: 2, owner: null }], questions);
+  assert.ok(!without.includes(KIND_RULE), "a model with no question-kind type is told nothing of kinds");
+  assert.ok(without.includes(QUESTION_RULE), "and still carries the question rule");
+  const kindsOnly = systemPrompt("x", "en", [{ type: "question-kind", count: 2, owner: null }], []);
+  assert.ok(!kindsOnly.includes(KIND_RULE), "kinds with no question line carry no rule about questions");
+});
+
+test("KIND_RULE sends a question about the questions to the kinds, in rank order, never to an earlier answer", () => {
+  assert.ok(KIND_RULE.includes("list_entities with type question-kind"));
+  assert.ok(KIND_RULE.includes("in rank order"));
+  assert.ok(KIND_RULE.includes("list_references"));
+  assert.ok(KIND_RULE.includes("never answered from an earlier turn"));
 });
 
 test("the question index line lists titles in the order given, within the cap, ending in a period", () => {
