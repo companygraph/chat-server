@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, googleIdentityToken, METADATA_IDENTITY_URL } from "../lib/model.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -83,4 +83,81 @@ test("the minute's rate from the model is busy one minute from now, and any othe
   assert.equal(asChatError(other), other);
   const plain = new Error("no status");
   assert.equal(asChatError(plain), plain);
+});
+
+const federation = { ruleId: "fdrl_01test", organizationId: "00000000-0000-4000-8000-000000000000", serviceAccountId: "svac_01test", workspaceId: null };
+
+// The exchange's body is read as JSON, or as a form where the SDK sends one, so the test holds
+// the fields and not the encoding.
+const fields = (body) => { try { return JSON.parse(body); } catch { return Object.fromEntries(new URLSearchParams(body)); } };
+
+// A fetch that plays the metadata server, the token endpoint and the Messages API, and records
+// what each was sent. The Messages API answers 429 with x-should-retry false, so the turn ends
+// at once as busy, which proves the request was made with the traded token.
+function fakeFetch({ metadata = () => new Response("h.p.s") } = {}) {
+  const seen = [];
+  const fetch = async (url, init = {}) => {
+    const u = String(url instanceof Request ? url.url : url);
+    seen.push({ url: u, headers: new Headers(init.headers), body: typeof init.body === "string" ? init.body : null });
+    if (u.startsWith("http://metadata.google.internal/")) return metadata();
+    if (u.endsWith("/v1/oauth/token")) return Response.json({ access_token: "sk-ant-oat01-test", token_type: "Bearer", expires_in: 600 });
+    return Response.json({ type: "error", error: { type: "rate_limit_error", message: "slow" } }, { status: 429, headers: { "x-should-retry": "false" } });
+  };
+  return { fetch, seen };
+}
+
+const ask = (m) => m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {});
+
+test("the identity token is asked of the metadata server for the Anthropic audience, in full", async () => {
+  assert.equal(METADATA_IDENTITY_URL, "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=https://api.anthropic.com&format=full");
+  const { fetch, seen } = fakeFetch({ metadata: () => new Response("h.p.s\n") });
+  assert.equal(await googleIdentityToken(fetch)(), "h.p.s");
+  assert.equal(seen[0].headers.get("metadata-flavor"), "Google");
+});
+
+test("a metadata answer that is not a token says so by status, before any exchange", async () => {
+  await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("<html>", { status: 404 }) }).fetch)(), /metadata server answered 404/);
+  await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("<html>") }).fetch)(), /not a token/);
+});
+
+test("a federated model trades the platform's token for a bearer, and a stray key in the environment does not shadow it", async () => {
+  const saved = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "sk-ant-leftover";
+  const { fetch, seen } = fakeFetch();
+  try {
+    const m = anthropicModel({ federation, fetch });
+    assert.equal(m.provider, "anthropic");
+    assert.equal(m.credential, "federation");
+    await assert.rejects(ask(m), (e) => e.code === "busy");
+  } finally {
+    if (saved === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved;
+  }
+  const exchange = seen.find((s) => s.url.endsWith("/v1/oauth/token"));
+  assert.ok(exchange, "the token endpoint was asked");
+  assert.equal(new URL(exchange.url).origin, "https://api.anthropic.com");
+  const f = fields(exchange.body);
+  assert.equal(f.grant_type, "urn:ietf:params:oauth:grant-type:jwt-bearer");
+  assert.equal(f.assertion, "h.p.s");
+  assert.equal(f.federation_rule_id, "fdrl_01test");
+  assert.equal(f.organization_id, "00000000-0000-4000-8000-000000000000");
+  assert.equal(f.service_account_id, "svac_01test");
+  const message = seen.find((s) => s.url.endsWith("/v1/messages"));
+  assert.ok(message, "the Messages API was asked");
+  assert.equal(message.headers.get("authorization"), "Bearer sk-ant-oat01-test");
+  assert.equal(message.headers.get("x-api-key"), null, "no key rides along");
+});
+
+test("a metadata server that fails ends the turn as an error that names it, and never as busy", async () => {
+  const { fetch, seen } = fakeFetch({ metadata: () => new Response("<html>", { status: 404 }) });
+  await assert.rejects(ask(anthropicModel({ federation, fetch })), (e) => e.code !== "busy" && /metadata server answered 404/.test(`${e?.message} ${e?.cause?.message}`));
+  assert.ok(!seen.some((s) => s.url.endsWith("/v1/messages")), "no message was sent without a token");
+});
+
+test("the chooser picks federation from the config, and each model names its credential", () => {
+  const base = { project: "p", region: "eu", anthropicKey: null, anthropicFederation: null };
+  assert.equal(modelFor(base).credential, "google");
+  assert.equal(modelFor({ ...base, anthropicKey: "sk-ant-test" }).credential, "key");
+  const f = modelFor({ ...base, anthropicFederation: federation });
+  assert.equal(f.provider, "anthropic");
+  assert.equal(f.credential, "federation");
 });
