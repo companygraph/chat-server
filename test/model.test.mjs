@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, googleIdentityToken, METADATA_IDENTITY_URL } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, googleIdentityToken, METADATA_IDENTITY_URL, credentialFault } from "../lib/model.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -160,4 +160,28 @@ test("the chooser picks federation from the config, and each model names its cre
   const f = modelFor({ ...base, anthropicFederation: federation });
   assert.equal(f.provider, "anthropic");
   assert.equal(f.credential, "federation");
+});
+
+// A fetch that answers nothing until its signal aborts, as a hung server does; without a signal
+// it never settles, and the test's own timeout fails it.
+const hang = (_url, init = {}) => new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal.reason)));
+
+test("a metadata server that cannot be reached, or does not answer in time, is named as such", { timeout: 3000 }, async () => {
+  const down = async () => { throw new TypeError("fetch failed"); };
+  await assert.rejects(googleIdentityToken(down)(), (e) => e.name === "CredentialError" && /metadata server could not be reached: fetch failed/.test(e.message));
+  await assert.rejects(googleIdentityToken(hang, { timeoutMs: 50 })(), (e) => e.name === "CredentialError" && /metadata server could not be reached/.test(e.message));
+  await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("x", { status: 404 }) }).fetch)(), (e) => e.name === "CredentialError");
+});
+
+test("a token exchange that does not answer ends the turn in time, and never as busy", { timeout: 3000 }, async () => {
+  const fetch = (url, init) => (String(url).endsWith("/v1/oauth/token") ? hang(url, init) : fakeFetch().fetch(url, init));
+  await assert.rejects(ask(anthropicModel({ federation, fetch, tokenTimeoutMs: 50 })), (e) => e.code !== "busy");
+});
+
+test("a credential's fault is found on the error or its cause, and nothing else is", () => {
+  const own = Object.assign(new Error("the metadata server answered 404 when asked for an identity token"), { name: "CredentialError" });
+  assert.equal(credentialFault(own), own);
+  assert.equal(credentialFault(new Error("wrapped", { cause: own })), own);
+  assert.equal(credentialFault(new Error("boom")), null);
+  assert.equal(credentialFault(undefined), null);
 });

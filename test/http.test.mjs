@@ -392,3 +392,32 @@ test("a fault while answering is one JSON line under chat.error, with the error'
   assert.ok(!errors.join("").includes("secret words"), "no visitor text on standard error");
   assert.equal(JSON.parse(out[0]).refused, "internal", "and the question is kept as refused internal");
 });
+
+test("a credential's fault logs its own sentence and status, since neither repeats the visitor", async () => {
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  after(() => { console.error = original; });
+  const sentence = "the metadata server answered 404 when asked for an identity token";
+  const fault = Object.assign(new Error(sentence), { name: "CredentialError", statusCode: 404 });
+  const base = await listen({ model: { name: "fake", async turn() { throw new Error("wrapped", { cause: fault }); } }, log: () => {} });
+  await (await post(base, { messages: [{ role: "user", content: "secret words" }], lang: "en" })).text();
+  const faults = errors.filter((e) => e.includes("chat.error")).map((e) => JSON.parse(e));
+  assert.equal(faults.length, 1);
+  assert.equal(faults[0].detail, sentence);
+  assert.equal(faults[0].status, 404);
+  assert.ok(!errors.join("").includes("secret words"));
+});
+
+test("an ordinary fault still logs no message of its own", async () => {
+  const errors = [];
+  const original = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  after(() => { console.error = original; });
+  const base = await listen({ model: { name: "fake", async turn() { throw new Error("the provider repeated secret words"); } }, log: () => {} });
+  await (await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).text();
+  const faults = errors.filter((e) => e.includes("chat.error")).map((e) => JSON.parse(e));
+  assert.equal(faults.length, 1);
+  assert.equal(faults[0].detail, undefined);
+  assert.ok(!errors.join("").includes("secret words"));
+});
