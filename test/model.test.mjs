@@ -163,8 +163,13 @@ test("the chooser picks federation from the config, and each model names its cre
 });
 
 // A fetch that answers nothing until its signal aborts, as a hung server does; without a signal
-// it never settles, and the test's own timeout fails it.
-const hang = (_url, init = {}) => new Promise((_, reject) => init.signal?.addEventListener("abort", () => reject(init.signal.reason)));
+// it never settles, and the test's own timeout fails it. It holds a timer of its own meanwhile,
+// as a real socket would, since AbortSignal.timeout's timer does not keep the process alive and
+// on Node 22 the test would end with its promise still pending.
+const hang = (_url, init = {}) => new Promise((_, reject) => {
+  const held = setTimeout(() => {}, 5000);
+  init.signal?.addEventListener("abort", () => { clearTimeout(held); reject(init.signal.reason); });
+});
 
 test("a metadata server that cannot be reached, or does not answer in time, is named as such", { timeout: 3000 }, async () => {
   const down = async () => { throw new TypeError("fetch failed"); };
