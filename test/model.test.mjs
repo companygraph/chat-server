@@ -118,6 +118,8 @@ test("the identity token is asked of the metadata server for the Anthropic audie
 test("a metadata answer that is not a token says so by status, before any exchange", async () => {
   await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("<html>", { status: 404 }) }).fetch)(), /metadata server answered 404/);
   await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("<html>") }).fetch)(), /not a token/);
+  await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("<html><p>Error. Try again. Later</p></html>") }).fetch)(), /not a token/, "two dots are not a token");
+  await assert.rejects(googleIdentityToken(fakeFetch({ metadata: () => new Response("h..s") }).fetch)(), /not a token/, "an empty part is not a token");
 });
 
 test("a federated model trades the platform's token for a bearer, and a stray key in the environment does not shadow it", async () => {
