@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { ROOT, chat } from "../build/config.mjs";
+import { ROOT, chat, federationProblems } from "../build/config.mjs";
 
 export function registerConfigTests() {
   const c = chat();
@@ -16,6 +16,7 @@ export function registerConfigTests() {
     for (const o of c.origins) assert.match(o, /^https:\/\/[^/]+$/, `${o} is an origin, scheme and host only`);
     assert.ok(Number.isInteger(c.month_tokens) && c.month_tokens > 0);
     if ("provider" in c) assert.ok(["vertex", "anthropic"].includes(c.provider), "provider is vertex or anthropic");
+    assert.deepEqual(federationProblems(c), [], "anthropic_federation is sound");
   });
 
   test("the host it reads is this deployment's own, and the chat's site is not the host's site", () => {

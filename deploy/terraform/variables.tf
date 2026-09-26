@@ -22,8 +22,9 @@ variable "run_host" {
   type    = string
   default = ""
 }
-# Which API answers: Vertex AI in this project, or the Anthropic API with the key the owner put
-# in the project's secret `chat-anthropic-key`. The secret, its version and the runtime's read
+# Which API answers: Vertex AI in this project, or the Anthropic API, with a key the owner put in
+# the project's secret `chat-anthropic-key` or, when anthropic_federation is set, with the
+# service's own identity and no secret at all. The secret, its version and the runtime's read
 # access are the owner's, made before the deploy that mounts it.
 variable "model_provider" {
   type    = string
@@ -31,5 +32,23 @@ variable "model_provider" {
   validation {
     condition     = contains(["vertex", "anthropic"], var.model_provider)
     error_message = "model_provider is vertex or anthropic."
+  }
+}
+# With the Anthropic API, the service trades its own Google identity for a token that lives
+# minutes when the owner has made a federation rule for it, and reads the key from the project's
+# secret when not. The ids are the rule's, the organization's and the Anthropic service
+# account's, and none is a secret: only a token Google signs for this project's chat-run passes
+# the rule. The workspace is needed only where the rule spans more than one.
+variable "anthropic_federation" {
+  type = object({
+    rule_id            = string
+    organization_id    = string
+    service_account_id = string
+    workspace_id       = optional(string)
+  })
+  default = null
+  validation {
+    condition     = var.anthropic_federation == null || var.model_provider == "anthropic"
+    error_message = "anthropic_federation is for model_provider anthropic."
   }
 }
