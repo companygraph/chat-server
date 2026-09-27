@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS } from "../lib/prompt.mjs";
+import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS, DIAGRAM_RULE, DEFAULT_QUESTION_INDEX_CHARS } from "../lib/prompt.mjs";
 
 // lib/prompt.mjs's RULES copied verbatim: at 63e6367, before the question index existed, and
 // since 0.12.2 with the escape sentence narrowed and the identity sentence added, both inside
@@ -186,4 +186,16 @@ test("the type map is one sentence naming each type with its count and owner, an
 
 test("a language the widget does not send falls back to English", () => {
   assert.match(systemPrompt("x", "fr"), /answer in English\.$/);
+});
+
+test("the picture sentence follows the Markdown rule where the host draws, and is absent where it does not", () => {
+  const md = RULES.find((r) => r.startsWith("Write Markdown of this subset"));
+  const without = systemPrompt("I.", "en", []);
+  assert.ok(!without.includes(DIAGRAM_RULE));
+  assert.ok(without.includes(md));
+  const withIt = systemPrompt("I.", "en", [], [], DEFAULT_QUESTION_INDEX_CHARS, false, true);
+  assert.ok(withIt.includes(`${md} ${DIAGRAM_RULE}`));
+  assert.match(DIAGRAM_RULE, /\bdiagram\b/);
+  assert.match(DIAGRAM_RULE, /never the picture itself/);
+  assert.match(DIAGRAM_RULE, /no relation/);
 });
