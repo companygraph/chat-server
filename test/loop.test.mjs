@@ -512,6 +512,19 @@ test("diagramNote says what was drawn, by title and type, and holds no source", 
   assert.match(note.drawn, /calling each by its type/);
 });
 
+test("diagramNote says what a process picture's arrows mean, and only for a process", () => {
+  const nodes = [{ node: "n0", id: "p/shape", title: "Shape", type: "phase" }, { node: "n1", id: "p/spec", title: "Spec", type: "phase" }];
+  const links = [{ from: "n0", to: "n1", label: "Owner" }, { from: "n1", to: "n1", label: "Owner: reshaped, dropped" }];
+  const note = JSON.parse(diagramNote({ shape: "process", title: "Delivery", nodes, edges: 2, omitted: 0, links }));
+  assert.match(note.process, /approve/);
+  assert.match(note.process, /owns nothing/);
+  assert.match(note.process, /Stop/);
+  assert.match(note.process, /Gate/);
+  for (const shape of ["concepts", "neighborhood"]) {
+    assert.equal("process" in JSON.parse(diagramNote({ shape, title: "A", nodes, edges: 2, omitted: 0, links })), false, shape);
+  }
+});
+
 test("a picture of the schemas keeps what every other type declares and the core for the note, and sends neither to the widget", () => {
   const nodes = [
     { node: "n0", id: "core/phase", title: "phase", type: "schema", url: "https://github.com/o/r/blob/c/meta/core/phase-schema.md" },
