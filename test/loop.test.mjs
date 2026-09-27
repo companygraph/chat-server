@@ -1,6 +1,6 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing } from "../lib/loop.mjs";
+import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
@@ -391,4 +391,75 @@ test("foundNothing: a refused call, an error answer and an empty list are nothin
   assert.equal(foundNothing({ isError: false, data: { results: [{ id: "x", title: "X" }] } }), false);
   assert.equal(foundNothing({ isError: false, data: { entity: { id: "x", title: "X", references: [] } } }), false, "an entity with no references is the entity");
   assert.equal(foundNothing({ isError: false, data: { types: [] } }), false, "a schema answer is neither an entity nor a list of them");
+});
+
+test("a diagram answer is the widget's to draw: its event after its names, and only what it drew for the model", async () => {
+  const model = fakeModel([toolTurn("diagram", { shape: "process", id: "processes/delivery" }), textTurn("Delivery runs in three phases.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me the delivery process" }], lang: "en" }, emit);
+  assert.deepEqual(events.map(([e]) => e), ["names", "diagram", "text", "done"]);
+  const picture = events[1][1];
+  assert.deepEqual(Object.keys(picture).sort(), ["mermaid", "nodes", "omitted", "shape", "title"]);
+  assert.deepEqual([picture.shape, picture.title, picture.omitted], ["process", "Delivery", 0]);
+  assert.match(picture.mermaid, /^flowchart LR\n/);
+  assert.deepEqual(picture.nodes.map((n) => n.id), ["processes/delivery/phases/specify", "processes/delivery/phases/build", "processes/delivery/phases/release"]);
+  const named = events[0][1].names.map((n) => n.id);
+  for (const n of picture.nodes) assert.ok(named.includes(n.id), `${n.id} is linked where the answer writes it`);
+  const result = model.requests[1].messages.at(-1).content[0];
+  assert.equal(result.type, "tool_result");
+  assert.doesNotMatch(result.content, /flowchart|-->/);
+  const note = JSON.parse(result.content);
+  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["process", "Delivery", ["Specify", "Build", "Release"], 2, 0]);
+  assert.match(note.drawn, /under your answer/);
+});
+
+test("a refused diagram draws nothing, and the model reads the refusal", async () => {
+  const model = fakeModel([toolTurn("diagram", { shape: "process", id: "nothing/here" }), textTurn("The model does not say.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me a process" }], lang: "en" }, emit);
+  assert.ok(!events.some(([e]) => e === "diagram"));
+  const result = model.requests[1].messages.at(-1).content[0];
+  assert.equal(result.is_error, true);
+  assert.match(result.content, /nothing\/here/);
+});
+
+test("two diagrams in one message are two events, in the order they were drawn", async () => {
+  const model = fakeModel([
+    toolTurn("diagram", { shape: "process", id: "processes/delivery" }),
+    toolTurn("diagram", { shape: "neighborhood", id: "concepts/invoice" }),
+    textTurn("Here is how the invoice connects."),
+  ]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me" }], lang: "en" }, emit);
+  assert.deepEqual(events.filter(([e]) => e === "diagram").map(([, d]) => d.shape), ["process", "neighborhood"]);
+});
+
+test("a phase already cited is not named again when the process is drawn", async () => {
+  const model = fakeModel([
+    toolTurn("get_entity", { id: "processes/delivery/phases/build" }),
+    toolTurn("diagram", { shape: "process", id: "processes/delivery" }),
+    textTurn("Build is the second phase."),
+  ]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "where is build?" }], lang: "en" }, emit);
+  const named = events.filter(([e]) => e === "names").flatMap(([, d]) => d.names.map((n) => n.id));
+  assert.ok(events.some(([e, d]) => e === "cite" && d.id === "processes/delivery/phases/build"));
+  assert.ok(!named.includes("processes/delivery/phases/build"));
+  assert.ok(named.includes("processes/delivery/phases/specify"));
+});
+
+test("diagramOf takes a whole diagram answer and nothing else", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "phase" }];
+  const data = { shape: "process", title: "D", mermaid: "flowchart LR", nodes, edges: 0, omitted: 0, model: {} };
+  assert.deepEqual(diagramOf("diagram", { isError: false, data }), { shape: "process", title: "D", mermaid: "flowchart LR", nodes, omitted: 0 });
+  assert.equal(diagramOf("search", { isError: false, data }), null);
+  assert.equal(diagramOf("diagram", { isError: true, data: { error: { code: "cannot_draw" } } }), null);
+  assert.equal(diagramOf("diagram", { isError: false, data: { shape: "process", mermaid: "flowchart LR" } }), null);
+  assert.equal(diagramOf("diagram", { isError: false, data: null }), null);
+});
+
+test("diagramNote says what was drawn, by title, and holds no source", () => {
+  const note = JSON.parse(diagramNote({ shape: "concepts", title: null, mermaid: "classDiagram", nodes: [{ node: "n0", id: "a", title: "Claim", type: "concept" }], edges: 3, omitted: 1 }));
+  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["concepts", null, ["Claim"], 3, 1]);
+  assert.equal("mermaid" in note, false);
 });
