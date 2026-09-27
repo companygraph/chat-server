@@ -197,5 +197,5 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.ok(withIt.includes(`${md} ${DIAGRAM_RULE}`));
   assert.match(DIAGRAM_RULE, /\bdiagram\b/);
   assert.match(DIAGRAM_RULE, /never the picture itself/);
-  assert.match(DIAGRAM_RULE, /no relation/);
+  assert.match(DIAGRAM_RULE, /only the relations the tool listed/);
 });
