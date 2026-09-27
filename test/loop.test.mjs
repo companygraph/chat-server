@@ -5,7 +5,7 @@ import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
-import { NAME_NOTE } from "../lib/prompt.mjs";
+import { NAME_NOTE, DIAGRAM_RULE } from "../lib/prompt.mjs";
 import { startFixtureHost, EXAMPLE_ROOT } from "./helpers.mjs";
 
 let fixture, host;
@@ -397,6 +397,7 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   const model = fakeModel([toolTurn("diagram", { shape: "process", id: "processes/delivery" }), textTurn("Delivery runs in three phases.")]);
   const { events, emit } = collect();
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me the delivery process" }], lang: "en" }, emit);
+  assert.ok(model.requests[0].system[0].text.includes(DIAGRAM_RULE), "the host draws, so the model is told when to ask");
   assert.deepEqual(events.map(([e]) => e), ["names", "diagram", "text", "done"]);
   const picture = events[1][1];
   assert.deepEqual(Object.keys(picture).sort(), ["mermaid", "nodes", "omitted", "shape", "title"]);
