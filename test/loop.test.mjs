@@ -411,8 +411,9 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   assert.doesNotMatch(result.content, /flowchart|-->/);
   const note = JSON.parse(result.content);
   assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["process", "Delivery", ["Specify", "Build", "Release"], 2, 0]);
+  assert.deepEqual(note.relations, [{ from: "Specify", to: "Build", label: "Reviewer" }, { from: "Build", to: "Release", label: "Reviewer" }]);
   assert.match(note.drawn, /under your answer/);
-  assert.match(note.drawn, /State no relation/);
+  assert.match(note.drawn, /state only the relations listed in relations/);
 });
 
 test("a refused diagram draws nothing, and the model reads the refusal", async () => {
@@ -453,7 +454,7 @@ test("a phase already cited is not named again when the process is drawn", async
 test("diagramOf takes a whole diagram answer and nothing else", () => {
   const nodes = [{ node: "n0", id: "a", title: "A", type: "phase" }];
   const data = { shape: "process", title: "D", mermaid: "flowchart LR", nodes, edges: 0, omitted: 0, model: {} };
-  assert.deepEqual(diagramOf("diagram", { isError: false, data }), { shape: "process", title: "D", mermaid: "flowchart LR", nodes, omitted: 0 });
+  assert.deepEqual(diagramOf("diagram", { isError: false, data }), { shape: "process", title: "D", mermaid: "flowchart LR", nodes, omitted: 0, links: [] });
   assert.equal(diagramOf("search", { isError: false, data }), null);
   assert.equal(diagramOf("diagram", { isError: true, data: { error: { code: "cannot_draw" } } }), null);
   assert.equal(diagramOf("diagram", { isError: false, data: { shape: "process", mermaid: "flowchart LR" } }), null);
@@ -467,6 +468,32 @@ test("diagramOf drops a malformed node rather than throw, and refuses a picture 
   assert.deepEqual(picture.nodes, [valid]);
   const allInvalid = { ...data, nodes: [null, { node: "n1", id: "b", title: 5 }] };
   assert.equal(diagramOf("diagram", { isError: false, data: allInvalid }), null);
+});
+
+test("diagramOf drops a link whose end is a dropped node, and one whose label is not a string", () => {
+  const kept = { node: "n0", id: "a", title: "A", type: "phase" };
+  const dropped = { node: "n1", id: "b", title: 5 };
+  const data = {
+    shape: "process", title: "D", mermaid: "flowchart LR", nodes: [kept, dropped], edges: 0, omitted: 0,
+    links: [{ from: "n0", to: "n1", label: "to a dropped node" }, { from: "n0", to: "n0", label: 5 }, { from: "n0", to: "n0", label: "kept" }],
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.links, [{ from: "n0", to: "n0", label: "kept" }]);
+});
+
+test("diagramNote caps relations at 60 and says how many more the picture drew", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A" }, { node: "n1", id: "b", title: "B" }];
+  const links = Array.from({ length: 65 }, () => ({ from: "n0", to: "n1", label: "x" }));
+  const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 65, omitted: 0, links }));
+  assert.equal(note.relations.length, 60);
+  assert.equal(note.relationsOmitted, 5);
+});
+
+test("diagramNote gives an empty relations list where the host answers no links", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A" }];
+  const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 0, omitted: 0 }));
+  assert.deepEqual(note.relations, []);
+  assert.ok(!("relationsOmitted" in note));
 });
 
 test("diagramNote says what was drawn, by title, and holds no source", () => {
