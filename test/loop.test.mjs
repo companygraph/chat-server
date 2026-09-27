@@ -410,9 +410,14 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   assert.equal(result.type, "tool_result");
   assert.doesNotMatch(result.content, /flowchart|-->/);
   const note = JSON.parse(result.content);
-  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["process", "Delivery", ["Specify", "Build", "Release"], 2, 0]);
-  assert.deepEqual(note.relations, [{ from: "Specify", to: "Build", label: "Reviewer" }, { from: "Build", to: "Release", label: "Reviewer" }]);
+  assert.deepEqual([note.shape, note.title, note.edges, note.omitted], ["process", "Delivery", 2, 0]);
+  assert.deepEqual(note.nodes, [{ title: "Specify", type: "phase" }, { title: "Build", type: "phase" }, { title: "Release", type: "phase" }]);
+  assert.deepEqual(note.relations, [
+    { from: "Specify", fromType: "phase", to: "Build", toType: "phase", label: "Reviewer" },
+    { from: "Build", fromType: "phase", to: "Release", toType: "phase", label: "Reviewer" },
+  ]);
   assert.match(note.drawn, /under your answer/);
+  assert.match(note.drawn, /calling each by its type/);
   assert.match(note.drawn, /state only the relations listed in relations/);
 });
 
@@ -482,22 +487,24 @@ test("diagramOf drops a link whose end is a dropped node, and one whose label is
 });
 
 test("diagramNote caps relations at 60 and says how many more the picture drew", () => {
-  const nodes = [{ node: "n0", id: "a", title: "A" }, { node: "n1", id: "b", title: "B" }];
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "concept" }, { node: "n1", id: "b", title: "B", type: "concept" }];
   const links = Array.from({ length: 65 }, () => ({ from: "n0", to: "n1", label: "x" }));
   const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 65, omitted: 0, links }));
   assert.equal(note.relations.length, 60);
   assert.equal(note.relationsOmitted, 5);
+  assert.deepEqual(note.relations[0], { from: "A", fromType: "concept", to: "B", toType: "concept", label: "x" });
 });
 
 test("diagramNote gives an empty relations list where the host answers no links", () => {
-  const nodes = [{ node: "n0", id: "a", title: "A" }];
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "concept" }];
   const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 0, omitted: 0 }));
   assert.deepEqual(note.relations, []);
   assert.ok(!("relationsOmitted" in note));
 });
 
-test("diagramNote says what was drawn, by title, and holds no source", () => {
+test("diagramNote says what was drawn, by title and type, and holds no source", () => {
   const note = JSON.parse(diagramNote({ shape: "concepts", title: null, mermaid: "classDiagram", nodes: [{ node: "n0", id: "a", title: "Claim", type: "concept" }], edges: 3, omitted: 1 }));
-  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["concepts", null, ["Claim"], 3, 1]);
+  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["concepts", null, [{ title: "Claim", type: "concept" }], 3, 1]);
   assert.equal("mermaid" in note, false);
+  assert.match(note.drawn, /calling each by its type/);
 });
