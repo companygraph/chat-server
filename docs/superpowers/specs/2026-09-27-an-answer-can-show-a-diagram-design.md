@@ -44,7 +44,7 @@ The source holds no `click` line, which `strict` would ignore. The widget finds 
 
 When the script does not load or the source does not render, the place shows the source in a `<pre>` under one sentence in the page's language, that the diagram could not be drawn, and the answer stands. `rbChat` gains `mermaidConfig(styles)`, pure, the configuration read from the tokens, and `nodeElement(svg, node)`, the one place that knows how Mermaid names a node in its SVG; the strings gain the three shapes' captions, the sentence and the Expand label in both languages.
 
-No host is added: the script comes from the site's own origin, so the sentence at the head of `chat.js`, that the conversation reaches no server but the one the tag names, and the privacy pages stay true. Each site's third-party licenses page gains a row for Mermaid.
+No host is added: the script comes from the site's own origin, so the sentence at the head of `chat.js`, that the conversation reaches no server but the one the tag names, and the privacy pages stay true. The license travels in the `chat` group beside the script, as d3's does in the `stage` group, design's NOTICE names it, and each site's README names the file among those it does not write.
 
 ## 6. Tests
 
@@ -54,7 +54,7 @@ Before the chat's pull request, the local measurement runs control against chang
 
 ## 7. Files
 
-`mcp-server`: a `lib/diagram.mjs`, `lib/tools.mjs`, `lib/errors.mjs`, `lib/schemas.mjs`, `lib/contract.mjs`, `scripts/interface.mjs`, `docs/INTERFACE.md`, the tests, and the README's list of tools. `chat-server`: `lib/loop.mjs`, `lib/prompt.mjs`, `docs/INTERFACE.md`, the pin of `companygraph-mcp-server` its tests run against, the tests. `design`: `assets/chat.js`, `assets/chat.css`, `assets/mermaid.min.js` and `assets/mermaid.LICENSE.txt`, `lib/groups.mjs`, `NOTICE`, `README.md`, the tests. Each site: the re-pin and the licenses row.
+`mcp-server`: a `lib/diagram.mjs`, `lib/tools.mjs`, `lib/errors.mjs`, `lib/schemas.mjs`, `lib/contract.mjs`, `scripts/interface.mjs`, `docs/INTERFACE.md`, the tests, and the README's list of tools. `chat-server`: `lib/loop.mjs`, `lib/prompt.mjs`, `docs/INTERFACE.md`, the pin of `companygraph-mcp-server` its tests run against, the tests. `design`: `assets/chat.js`, `assets/chat.css`, `assets/mermaid.min.js` and `assets/mermaid.LICENSE.txt`, `lib/groups.mjs`, `NOTICE`, `README.md`, the tests. Each site: the re-pin, and the README's License paragraph naming `mermaid.min.js`.
 
 ## 8. Release and order
 
