@@ -168,7 +168,10 @@ test("the naming note follows every round's tool answers and never the visitor's
   }
   assert.equal(model.requests[2].messages.filter((m) => JSON.stringify(m).includes(NAME_NOTE)).length, 2, "each round's answers keep their note, so the prefix the cache holds does not move");
   assert.match(NAME_NOTE, /In an English answer, name every entity by its title alone/);
-  assert.match(NAME_NOTE, /\*\*Die Kundenliste\*\* \(The customer list\)/);
+  assert.match(NAME_NOTE, /verweist auf die \*\*Kundenliste\*\* \(The customer list\)/, "in a sentence the article stands outside the bold");
+  assert.doesNotMatch(NAME_NOTE, /\*\*(Der|Die|Das) /, "no example glues a nominative article into a name");
+  assert.match(NAME_NOTE, /in the case and gender the sentence needs/);
+  assert.match(NAME_NOTE, /rendered into that language wherever it has a word for it; only a name the language keeps unchanged, such as \*\*MLOps\*\*, stands once and alone/);
   assert.match(NAME_NOTE, /never ß/);
 });
 
