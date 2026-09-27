@@ -508,3 +508,37 @@ test("diagramNote says what was drawn, by title and type, and holds no source", 
   assert.equal("mermaid" in note, false);
   assert.match(note.drawn, /calling each by its type/);
 });
+
+test("a picture of the schemas keeps what every other type declares and the core for the note, and sends neither to the widget", () => {
+  const nodes = [
+    { node: "n0", id: "core/phase", title: "phase", type: "schema", url: "https://github.com/o/r/blob/c/meta/core/phase-schema.md" },
+    { node: "n1", id: "core/process", title: "process", type: "schema", url: "https://github.com/o/r/blob/c/meta/core/process-schema.md" },
+  ];
+  const data = {
+    shape: "schema", title: null, mermaid: "classDiagram", nodes, edges: 1, omitted: 27,
+    links: [{ from: "n0", to: "n1", label: "nested-in" }],
+    everyType: [{ via: "source", to: "source", multiplicity: "1" }, { via: 5 }], model: { core: "0.45.0" },
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  assert.equal(picture.core, "0.45.0");
+  assert.equal(picture.nodes[0].url, nodes[0].url, "the widget links a type by its url");
+  const note = JSON.parse(diagramNote({ ...picture, edges: 1 }));
+  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  assert.match(note.schemas, /core 0\.45\.0/);
+  assert.match(note.schemas, /say it once/);
+  assert.deepEqual(note.nodes, [{ title: "phase", type: "schema" }, { title: "process", type: "schema" }]);
+  assert.deepEqual(note.relations, [{ from: "phase", fromType: "schema", to: "process", toType: "schema", label: "nested-in" }]);
+  assert.equal("everyType" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
+});
+
+test("a type in a picture of the schemas is no name the answer links", () => {
+  const data = { shape: "schema", nodes: [{ node: "n0", id: "core/role", title: "role", type: "schema" }, { node: "n1", id: "concepts/claim", title: "Claim", type: "concept" }] };
+  assert.deepEqual(namesIn(data), [{ id: "concepts/claim", title: "Claim" }]);
+});
+
+test("the diagram rule sends the meta-model to the schema shape, never to the concepts", () => {
+  assert.match(DIAGRAM_RULE, /meta-model, the schemas or the types/);
+  assert.match(DIAGRAM_RULE, /shape schema/);
+  assert.match(DIAGRAM_RULE, /not shape concepts/);
+});
