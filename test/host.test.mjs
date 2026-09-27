@@ -538,3 +538,56 @@ test("many concurrent callers during a failure share one attempt, and many concu
     await h.close();
   }
 });
+
+// A host re-pinned under a running chat: its answer grows a field the output schema the client
+// read at connect does not allow, which the client itself refuses. The host here serves one tool
+// whose schema and answer change when `release` moves, as a release that adds a field does.
+async function startReleasingHost() {
+  const { McpServer } = await import("@modelcontextprotocol/server");
+  const { NodeStreamableHTTPServerTransport } = await import("@modelcontextprotocol/node");
+  const { z } = await import("zod");
+  const state = { release: 1, calls: 0 };
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : undefined;
+    const mcp = new McpServer({ name: "releasing", version: String(state.release) });
+    const model = { commit: "c" + state.release };
+    mcp.registerTool("list_types", { description: "types", inputSchema: z.object({}), outputSchema: z.strictObject({ types: z.array(z.object({ type: z.string() })), model: z.object({ commit: z.string() }) }) },
+      async () => ({ content: [{ type: "text", text: "{}" }], structuredContent: { types: [], model } }));
+    const shape = state.release === 1 ? z.strictObject({ a: z.string(), model: z.object({ commit: z.string() }) }) : z.strictObject({ a: z.string(), b: z.string(), model: z.object({ commit: z.string() }) });
+    const answer = state.release === 1 ? { a: "x", model } : { a: "x", b: "y", model };
+    mcp.registerTool("probe", { description: `probe at release ${state.release}`, inputSchema: z.object({}), outputSchema: shape },
+      async () => { state.calls++; return { content: [{ type: "text", text: JSON.stringify(answer) }], structuredContent: answer }; });
+    const transport = new NodeStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+    await mcp.connect(transport);
+    await transport.handleRequest(req, res, body);
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  return { url: `http://127.0.0.1:${server.address().port}/mcp`, state, close: () => new Promise((r) => server.close(r)) };
+}
+
+test("a host released under the chat is read again: the call that its stale tool list refused succeeds, and the model gets the new tools", async () => {
+  const h0 = await startReleasingHost();
+  const h = await connectHost(h0.url);
+  try {
+    assert.equal((await h.call("probe", {})).data.a, "x");
+    assert.match(h.tools.find((t) => t.name === "probe").description, /release 1/);
+    h0.state.release = 2;
+    const r = await h.call("probe", {});
+    assert.deepEqual([r.data.a, r.data.b, r.isError], ["x", "y", false]);
+    assert.match(h.tools.find((t) => t.name === "probe").description, /release 2/, "the model is given the tools as they now are");
+  } finally {
+    await h.close(); await h0.close();
+  }
+});
+
+test("staleTools names only the client's own checks of an answer, not a host's refusal", async () => {
+  const { ProtocolError } = await import("@modelcontextprotocol/client");
+  const { staleTools } = await import("../lib/host.mjs");
+  assert.equal(staleTools(new ProtocolError(-32602, "Structured content does not match the tool's output schema: data must NOT have additional properties")), true);
+  assert.equal(staleTools(new ProtocolError(-32602, "Failed to validate structured content: boom")), true);
+  assert.equal(staleTools(new ProtocolError(-32600, "Tool diagram has an output schema but did not return structured content")), true);
+  assert.equal(staleTools(new ProtocolError(-32602, "Tool nope not found")), false);
+  assert.equal(staleTools(new Error("Structured content does not match the tool's output schema")), false);
+});
