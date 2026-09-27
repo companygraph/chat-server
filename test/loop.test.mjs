@@ -412,6 +412,7 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   const note = JSON.parse(result.content);
   assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["process", "Delivery", ["Specify", "Build", "Release"], 2, 0]);
   assert.match(note.drawn, /under your answer/);
+  assert.match(note.drawn, /State no relation/);
 });
 
 test("a refused diagram draws nothing, and the model reads the refusal", async () => {
@@ -457,6 +458,15 @@ test("diagramOf takes a whole diagram answer and nothing else", () => {
   assert.equal(diagramOf("diagram", { isError: true, data: { error: { code: "cannot_draw" } } }), null);
   assert.equal(diagramOf("diagram", { isError: false, data: { shape: "process", mermaid: "flowchart LR" } }), null);
   assert.equal(diagramOf("diagram", { isError: false, data: null }), null);
+});
+
+test("diagramOf drops a malformed node rather than throw, and refuses a picture with none left", () => {
+  const valid = { node: "n0", id: "a", title: "A", type: "phase" };
+  const data = { shape: "process", title: "D", mermaid: "flowchart LR", nodes: [null, valid, { node: "n1", id: "b", title: 5 }], edges: 0, omitted: 0 };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.nodes, [valid]);
+  const allInvalid = { ...data, nodes: [null, { node: "n1", id: "b", title: 5 }] };
+  assert.equal(diagramOf("diagram", { isError: false, data: allInvalid }), null);
 });
 
 test("diagramNote says what was drawn, by title, and holds no source", () => {
