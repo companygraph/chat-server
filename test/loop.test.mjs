@@ -413,11 +413,14 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   assert.equal(result.type, "tool_result");
   assert.doesNotMatch(result.content, /flowchart|-->/);
   const note = JSON.parse(result.content);
-  assert.deepEqual([note.shape, note.title, note.edges, note.omitted], ["process", "Delivery", 2, 0]);
+  // Two forward edges and the example's two back flows, each phase's "If not met" row.
+  assert.deepEqual([note.shape, note.title, note.edges, note.omitted], ["process", "Delivery", 4, 0]);
   assert.deepEqual(note.nodes, [{ title: "Specify", type: "phase" }, { title: "Build", type: "phase" }, { title: "Release", type: "phase" }]);
   assert.deepEqual(note.relations, [
     { from: "Specify", fromType: "phase", to: "Build", toType: "phase", label: "Reviewer" },
     { from: "Build", fromType: "phase", to: "Release", toType: "phase", label: "Reviewer" },
+    { from: "Specify", fromType: "phase", to: "Specify", toType: "phase", label: "Reviewer: reshaped" },
+    { from: "Build", fromType: "phase", to: "Build", toType: "phase", label: "Reviewer: reworked" },
   ]);
   assert.match(note.drawn, /under your answer/);
   assert.match(note.drawn, /calling each by its type/);
