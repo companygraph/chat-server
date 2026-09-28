@@ -92,3 +92,32 @@ test("a partial set of federation ids names each one missing, and a workspace al
   assert.throws(() => configFromEnv({ ...full, ...ids, ANTHROPIC_SERVICE_ACCOUNT_ID: "  " }), /ANTHROPIC_SERVICE_ACCOUNT_ID is not set/);
   assert.throws(() => configFromEnv({ ...full, ANTHROPIC_WORKSPACE_ID: "wrkspc_01test" }), /ANTHROPIC_WORKSPACE_ID is set without/);
 });
+
+test("the three choices default to what Google runs today", () => {
+  const c = configFromEnv(full);
+  assert.equal(c.meter, "firestore");
+  assert.equal(c.identity, "google");
+  assert.equal(c.log, "google");
+});
+
+test("each choice takes its values and refuses any other by name, whatever the case", () => {
+  const c = configFromEnv({ ...full, CHAT_METER: "memory", CHAT_IDENTITY: "google", CHAT_LOG: "plain" });
+  assert.equal(c.meter, "memory");
+  assert.equal(c.log, "plain");
+  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "Firestore" }), /^Error: CHAT_METER is not one of firestore memory: Firestore$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_IDENTITY: "azure" }), /^Error: CHAT_IDENTITY is not one of google: azure$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_LOG: "json" }), /^Error: CHAT_LOG is not one of google plain: json$/);
+});
+
+const fed = { ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01x", ANTHROPIC_ORGANIZATION_ID: "00000000-0000-4000-8000-000000000000", ANTHROPIC_SERVICE_ACCOUNT_ID: "svac_01x" };
+
+test("a project and a region are asked for only when the provider is Vertex", () => {
+  const f = configFromEnv({ ...full, ...fed, CHAT_PROJECT: undefined, CHAT_REGION: undefined });
+  assert.equal(f.provider, "anthropic");
+  assert.equal(f.project, null);
+  assert.equal(f.region, null);
+  const k = configFromEnv({ ...full, ANTHROPIC_API_KEY: "sk-ant-x", CHAT_PROJECT: "", CHAT_REGION: "" });
+  assert.equal(k.project, null);
+  assert.throws(() => configFromEnv({ ...full, CHAT_PROJECT: undefined }), /^Error: CHAT_PROJECT is not set$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_REGION: " " }), /^Error: CHAT_REGION is not set$/);
+});

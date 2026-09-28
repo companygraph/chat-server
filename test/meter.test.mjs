@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { units, Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
-import { FirestoreStore } from "../lib/firestore.mjs";
+import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 
 test("usage is weighed in input-equivalent tokens and rounded up", () => {
   assert.equal(units({ input_tokens: 100, output_tokens: 10 }), 150);

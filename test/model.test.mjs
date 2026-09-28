@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, googleIdentityToken, METADATA_IDENTITY_URL, credentialFault } from "../lib/model.mjs";
+import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, credentialFault, overForTest } from "../lib/model.mjs";
+import { googleIdentityToken, METADATA_IDENTITY_URL } from "../lib/platform/google/identity.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
 const tools = [{ name: "search", description: "d", input_schema: { type: "object" } }, { name: "fetch", description: "d", input_schema: { type: "object" } }];
@@ -128,7 +129,7 @@ test("a federated model trades the platform's token for a bearer, and a stray ke
   process.env.ANTHROPIC_API_KEY = "sk-ant-leftover";
   const { fetch, seen } = fakeFetch();
   try {
-    const m = anthropicModel({ federation, fetch });
+    const m = anthropicModel({ federation, identityToken: googleIdentityToken, fetch });
     assert.equal(m.provider, "anthropic");
     assert.equal(m.credential, "federation");
     await assert.rejects(ask(m), (e) => e.code === "busy");
@@ -152,7 +153,7 @@ test("a federated model trades the platform's token for a bearer, and a stray ke
 
 test("a metadata server that fails ends the turn as an error that names it, and never as busy", async () => {
   const { fetch, seen } = fakeFetch({ metadata: () => new Response("<html>", { status: 404 }) });
-  await assert.rejects(ask(anthropicModel({ federation, fetch })), (e) => e.code !== "busy" && /metadata server answered 404/.test(`${e?.message} ${e?.cause?.message}`));
+  await assert.rejects(ask(anthropicModel({ federation, identityToken: googleIdentityToken, fetch })), (e) => e.code !== "busy" && /metadata server answered 404/.test(`${e?.message} ${e?.cause?.message}`));
   assert.ok(!seen.some((s) => s.url.endsWith("/v1/messages")), "no message was sent without a token");
 });
 
@@ -160,7 +161,7 @@ test("the chooser picks federation from the config, and each model names its cre
   const base = { project: "p", region: "eu", anthropicKey: null, anthropicFederation: null };
   assert.equal(modelFor(base).credential, "google");
   assert.equal(modelFor({ ...base, anthropicKey: "sk-ant-test" }).credential, "key");
-  const f = modelFor({ ...base, anthropicFederation: federation });
+  const f = modelFor({ ...base, anthropicFederation: federation }, { identityToken: googleIdentityToken });
   assert.equal(f.provider, "anthropic");
   assert.equal(f.credential, "federation");
 });
@@ -183,7 +184,7 @@ test("a metadata server that cannot be reached, or does not answer in time, is n
 
 test("a token exchange that does not answer ends the turn in time, and never as busy", { timeout: 3000 }, async () => {
   const fetch = (url, init) => (String(url).endsWith("/v1/oauth/token") ? hang(url, init) : fakeFetch().fetch(url, init));
-  await assert.rejects(ask(anthropicModel({ federation, fetch, tokenTimeoutMs: 50 })), (e) => e.code !== "busy");
+  await assert.rejects(ask(anthropicModel({ federation, identityToken: googleIdentityToken, fetch, tokenTimeoutMs: 50 })), (e) => e.code !== "busy");
 });
 
 test("a credential's fault is found on the error or its cause, and nothing else is", () => {
@@ -192,4 +193,21 @@ test("a credential's fault is found on the error or its cause, and nothing else 
   assert.equal(credentialFault(new Error("wrapped", { cause: own })), own);
   assert.equal(credentialFault(new Error("boom")), null);
   assert.equal(credentialFault(undefined), null);
+});
+
+test("a federated model without an identity token source is refused where it is built", () => {
+  assert.throws(() => anthropicModel({ federation }), /^Error: a federated model needs an identity token source$/);
+  assert.throws(() => modelFor({ provider: "anthropic", anthropicFederation: federation }), /identity token source/);
+});
+
+test("a Vertex client that failed to load is built again on the next turn", async () => {
+  let builds = 0;
+  const m = overForTest(async () => {
+    builds++;
+    if (builds === 1) throw new Error("Cannot find package '@anthropic-ai/vertex-sdk'");
+    return { messages: { stream: () => ({ on() {}, finalMessage: async () => ({ content: [], stop_reason: "end_turn", usage: {} }) }) } };
+  });
+  await assert.rejects(m.turn({}, () => {}), /vertex-sdk/);
+  await m.turn({}, () => {});
+  assert.equal(builds, 2);
 });

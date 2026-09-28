@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { weekOf, weekRange, answered, renderReport, listEntries, runReport } from "../lib/report.mjs";
+import { weekOf, weekRange, answered, renderReport, runReport } from "../lib/report.mjs";
+import { listEntries } from "../lib/platform/google/questions.mjs";
 
 const entry = (over = {}) => ({ timestamp: "2026-09-23T10:00:00Z", kind: "question", question: "What is it?", lang: "en", cited: ["e1"], calls: 1, empty: 0, rounds: 2, refused: null, ...over });
 
