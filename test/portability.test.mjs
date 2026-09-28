@@ -8,8 +8,12 @@ import { fileURLToPath } from "node:url";
 import { exampleSnapshot } from "./helpers.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+// Every file at any depth: the platform adapters sit a folder below lib/, and a folder read as a
+// file fails the test for the wrong reason.
 const sources = ["lib", "bin"].filter((d) => fs.existsSync(path.join(root, d)))
-  .flatMap((d) => fs.readdirSync(path.join(root, d)).map((f) => path.join(d, f)));
+  .flatMap((d) => fs.readdirSync(path.join(root, d), { recursive: true, withFileTypes: true })
+    .filter((e) => e.isFile())
+    .map((e) => path.relative(root, path.join(e.parentPath, e.name))));
 
 // A name counts only as a whole word: an entity named with a plain word may sit inside a
 // longer identifier, as one of the example's sits inside toLocaleString, and that is not the
