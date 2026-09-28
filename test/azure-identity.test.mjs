@@ -25,7 +25,13 @@ test("an answer that is not a token is a credential error naming the endpoint, b
 
 test("an endpoint that cannot be reached, or does not answer in time, is named as such", { timeout: 3000 }, async () => {
   const down = async () => { throw new TypeError("fetch failed"); };
-  const hang = (url, { signal }) => new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason)));
+  // AbortSignal.timeout's timer does not keep the event loop alive, so on Node 22 this promise
+  // would still be pending when the loop ends; a held timer, cleared on abort, keeps it alive for
+  // exactly as long as the request is outstanding.
+  const hang = (url, { signal }) => new Promise((_, reject) => {
+    const held = setTimeout(() => {}, 5000);
+    signal.addEventListener("abort", () => { clearTimeout(held); reject(signal.reason); });
+  });
   await assert.rejects(azureIdentityToken(down, opts)(), (e) => e.name === "CredentialError" && /could not be reached: fetch failed/.test(e.message));
   await assert.rejects(azureIdentityToken(hang, { ...opts, timeoutMs: 50 })(), (e) => e.name === "CredentialError" && /could not be reached/.test(e.message));
 });
