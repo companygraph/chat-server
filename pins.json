@@ -1,0 +1,8 @@
+{
+  "pins": [
+    { "kind": "conventions", "file": "conventions.json", "repo": "robertblust/conventions" },
+    { "kind": "npm-tag", "file": "package.json", "repo": "companygraph/mcp-server" }
+  ],
+  "verify": ["npm test", "terraform -chdir=deploy/terraform init -backend=false -input=false", "terraform -chdir=deploy/terraform validate", "terraform fmt -check -recursive deploy"],
+  "release": ["npm version {version} --no-git-tag-version"]
+}
