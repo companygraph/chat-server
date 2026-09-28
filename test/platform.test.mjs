@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { meterStore, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
+import { TableStore } from "../lib/platform/azure/meter.mjs";
 import { googleIdentityToken } from "../lib/platform/google/identity.mjs";
 import { azureIdentityToken } from "../lib/platform/azure/identity.mjs";
 import { googleQuestions } from "../lib/platform/google/questions.mjs";
@@ -11,12 +12,12 @@ const missing = (pkg) => () => Promise.reject(Object.assign(new Error(`Cannot fi
 
 test("each meter kind builds its store", async () => {
   assert.ok((await meterStore("memory")) instanceof MemoryStore);
-  assert.ok((await meterStore("firestore", { firestore: async () => new FirestoreStore({ db: { doc: () => ({}) } }) })) instanceof FirestoreStore);
-  assert.deepEqual(Object.keys(METERS), ["firestore", "memory"]);
+  assert.ok((await meterStore("firestore", {}, { firestore: async () => new FirestoreStore({ db: { doc: () => ({}) } }) })) instanceof FirestoreStore);
+  assert.deepEqual(Object.keys(METERS), ["firestore", "memory", "table"]);
 });
 
 test("a chosen adapter whose package is not installed is named in one sentence", async () => {
-  await assert.rejects(meterStore("firestore", { firestore: missing("@google-cloud/firestore") }),
+  await assert.rejects(meterStore("firestore", {}, { firestore: missing("@google-cloud/firestore") }),
     (e) => e.message === "CHAT_METER=firestore needs a package that is not installed: Cannot find package '@google-cloud/firestore' imported from /app/lib/platform/google/meter.mjs");
 });
 
@@ -35,7 +36,18 @@ const fakeFirestore = () => {
   } });
 };
 
-for (const [name, make] of [["memory", () => new MemoryStore()], ["firestore", fakeFirestore]]) {
+// The table as the contract test needs it: one entity, ETags that move.
+const fakeTableClient = () => {
+  let entity = null, version = 0;
+  const fail = (statusCode) => Object.assign(new Error(String(statusCode)), { statusCode });
+  return {
+    async getEntity() { if (!entity) throw fail(404); return { ...entity, etag: String(version) }; },
+    async createEntity({ partitionKey, rowKey, ...rest }) { if (entity) throw fail(409); entity = rest; version++; },
+    async updateEntity({ partitionKey, rowKey, ...rest }, mode, { etag }) { if (etag !== String(version)) throw fail(412); entity = rest; version++; },
+  };
+};
+
+for (const [name, make] of [["memory", () => new MemoryStore()], ["firestore", fakeFirestore], ["table", () => new TableStore({ client: fakeTableClient() })]]) {
   test(`the ${name} store keeps what transact returns and starts empty`, async () => {
     const s = make();
     assert.deepEqual(await s.transact((d) => d), {});
@@ -44,6 +56,11 @@ for (const [name, make] of [["memory", () => new MemoryStore()], ["firestore", f
     assert.deepEqual(await s.transact((d) => d), { dayTokens: 2 });
   });
 }
+
+test("the table kind is made from its options", async () => {
+  const store = await meterStore("table", { client: fakeTableClient() });
+  assert.ok(store instanceof TableStore);
+});
 
 test("the google identity is the metadata server's token", async () => {
   assert.equal(await identityTokenSource("google"), googleIdentityToken);

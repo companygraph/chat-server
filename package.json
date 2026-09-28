@@ -35,6 +35,8 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/vertex-sdk": "^0.19.10",
+    "@azure/data-tables": "^13.3.2",
+    "@azure/identity": "^4.13.3",
     "@google-cloud/firestore": "^7.11.0",
     "google-auth-library": "^9.15.1"
   },

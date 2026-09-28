@@ -104,7 +104,7 @@ test("each choice takes its values and refuses any other by name, whatever the c
   const c = configFromEnv({ ...full, CHAT_METER: "memory", CHAT_IDENTITY: "google", CHAT_LOG: "plain" });
   assert.equal(c.meter, "memory");
   assert.equal(c.log, "plain");
-  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "Firestore" }), /^Error: CHAT_METER is not one of firestore memory: Firestore$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "Firestore" }), /^Error: CHAT_METER is not one of firestore memory table: Firestore$/);
   assert.throws(() => configFromEnv({ ...full, CHAT_IDENTITY: "aws" }), /^Error: CHAT_IDENTITY is not one of google azure: aws$/);
   assert.throws(() => configFromEnv({ ...full, CHAT_LOG: "json" }), /^Error: CHAT_LOG is not one of google plain: json$/);
 });
@@ -131,4 +131,11 @@ test("an Azure identity reads its four values, and refuses the start naming ever
   assert.throws(() => configFromEnv({ ...full, ...fed, CHAT_IDENTITY: "azure", ...azureIdentity, CHAT_IDENTITY_AUDIENCE: " " }), /^Error: CHAT_IDENTITY=azure needs CHAT_IDENTITY_AUDIENCE, which is not set$/);
   assert.deepEqual(configFromEnv({ ...full, ...fed }).identityOptions, {});
   assert.deepEqual(configFromEnv({ ...full, CHAT_IDENTITY: "azure" }).identityOptions, {}, "without federation no token is asked for, so nothing is needed");
+});
+
+test("a table meter reads its address and identity, and refuses the start naming what is missing", () => {
+  const c = configFromEnv({ ...full, CHAT_METER: "table", CHAT_TABLE_URL: "https://acct.table.core.windows.net/", AZURE_CLIENT_ID: "11111111-2222-3333-4444-555555555555" });
+  assert.deepEqual(c.meterOptions, { tableUrl: "https://acct.table.core.windows.net/", clientId: "11111111-2222-3333-4444-555555555555" });
+  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "table" }), /^Error: CHAT_METER=table needs CHAT_TABLE_URL, AZURE_CLIENT_ID, which are not set$/);
+  assert.deepEqual(configFromEnv(full).meterOptions, {});
 });

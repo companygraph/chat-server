@@ -47,7 +47,7 @@ try {
   const source = values.model !== "fake" && config.anthropicFederation ? await identityTokenSource(config.identity) : undefined;
   const identityToken = source && ((fetchFn, options) => source(fetchFn, { ...options, ...config.identityOptions }));
   const model = values.model === "fake" ? fakeModel : modelFor(config, { identityToken });
-  const store = await meterStore(config.meter);
+  const store = await meterStore(config.meter, config.meterOptions);
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
