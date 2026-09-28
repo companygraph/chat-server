@@ -1,8 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { meterStore, load, METERS } from "../lib/platform.mjs";
+import { meterStore, load, METERS, identityTokenSource, IDENTITIES } from "../lib/platform.mjs";
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
+import { googleIdentityToken } from "../lib/platform/google/identity.mjs";
 
 const missing = (pkg) => () => Promise.reject(Object.assign(new Error(`Cannot find package '${pkg}' imported from /app/lib/platform/google/meter.mjs`), { code: "ERR_MODULE_NOT_FOUND" }));
 
@@ -41,3 +42,8 @@ for (const [name, make] of [["memory", () => new MemoryStore()], ["firestore", f
     assert.deepEqual(await s.transact((d) => d), { dayTokens: 2 });
   });
 }
+
+test("the google identity is the metadata server's token", async () => {
+  assert.equal(await identityTokenSource("google"), googleIdentityToken);
+  assert.deepEqual(Object.keys(IDENTITIES), ["google"]);
+});

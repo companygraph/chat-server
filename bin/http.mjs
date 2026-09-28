@@ -12,7 +12,7 @@ import { connectHost } from "../lib/host.mjs";
 import { modelFor } from "../lib/model.mjs";
 import { Meter } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
-import { meterStore } from "../lib/platform.mjs";
+import { meterStore, identityTokenSource } from "../lib/platform.mjs";
 import { createHttpServer } from "../lib/http.mjs";
 
 const ICON_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
@@ -42,7 +42,8 @@ try {
     pageIcon = `data:${type};base64,${fs.readFileSync(values["page-icon"]).toString("base64")}`;
   }
   const host = await connectHost(config.mcpUrl, { questionCap: config.questionIndexChars });
-  const model = values.model === "fake" ? fakeModel : modelFor(config);
+  const identityToken = values.model !== "fake" && config.anthropicFederation ? await identityTokenSource(config.identity) : undefined;
+  const model = values.model === "fake" ? fakeModel : modelFor(config, { identityToken });
   const store = await meterStore(config.meter);
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
