@@ -5,7 +5,7 @@
 // stack. `--model fake` answers every message with one sentence and calls no tool, for a local
 // run without Vertex; `--meter` is CHAT_METER's, and `memory` is the local case.
 import fs from "node:fs";
-import { line } from "../lib/log.mjs";
+import { line, useLogFormat } from "../lib/log.mjs";
 import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
@@ -31,6 +31,7 @@ const fakeModel = {
 try {
   const { values } = parseArgs({ options: { "page-css": { type: "string" }, "page-brand": { type: "string" }, "page-icon": { type: "string" }, model: { type: "string" } } });
   const config = configFromEnv();
+  useLogFormat(config.log);
   const pageCss = values["page-css"] ? fs.readFileSync(values["page-css"], "utf8") : null;
   const pageBrand = values["page-brand"] ? fs.readFileSync(values["page-brand"], "utf8").trim() : null;
   let pageIcon = null;
