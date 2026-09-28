@@ -3,6 +3,6 @@
     { "kind": "conventions", "file": "conventions.json", "repo": "robertblust/conventions" },
     { "kind": "npm-tag", "file": "package.json", "repo": "companygraph/mcp-server" }
   ],
-  "verify": ["npm test", "terraform -chdir=deploy/google/terraform init -backend=false -input=false", "terraform -chdir=deploy/google/terraform validate", "terraform fmt -check -recursive deploy"],
+  "verify": ["npm test", "terraform -chdir=deploy/google/terraform init -backend=false -input=false", "terraform -chdir=deploy/google/terraform validate", "terraform -chdir=deploy/azure/terraform init -backend=false -input=false", "terraform -chdir=deploy/azure/terraform validate", "terraform fmt -check -recursive deploy"],
   "release": ["npm version {version} --no-git-tag-version"]
 }

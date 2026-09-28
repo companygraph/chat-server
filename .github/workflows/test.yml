@@ -23,4 +23,6 @@ jobs:
           terraform_wrapper: false
       - run: terraform -chdir=deploy/google/terraform init -backend=false -input=false
       - run: terraform -chdir=deploy/google/terraform validate
+      - run: terraform -chdir=deploy/azure/terraform init -backend=false -input=false
+      - run: terraform -chdir=deploy/azure/terraform validate
       - run: terraform fmt -check -recursive deploy
