@@ -65,6 +65,33 @@ test("five lost races refuse with a sentence rather than loop", async () => {
   await assert.rejects(store.transact((d) => ({ ...d, dayTokens: 1 })), /^Error: the meter could not be written after 5 attempts: another replica kept writing it$/);
 });
 
+test("an update that finds the entity gone, deleted by hand between the read and the write, is read again and the function creates it", async () => {
+  const t = { entity: { dayTokens: 1 }, version: 1, deleted: false, writes: 0 };
+  const fail = (statusCode) => Object.assign(new Error(`status ${statusCode}`), { statusCode });
+  const client = {
+    async getEntity(partitionKey, rowKey) {
+      if (!t.entity) throw fail(404);
+      return { ...t.entity, partitionKey, rowKey, etag: `W/"${t.version}"`, timestamp: "2026-09-28T00:00:00Z", "odata.metadata": "m" };
+    },
+    async createEntity(e) {
+      const { partitionKey, rowKey, ...rest } = e;
+      t.entity = rest; t.version++; t.writes++;
+    },
+    async updateEntity(e, mode, { etag }) {
+      assert.equal(mode, "Replace");
+      if (!t.deleted) { t.deleted = true; t.entity = null; throw fail(404); }
+      const { partitionKey, rowKey, ...rest } = e;
+      t.entity = rest; t.version++; t.writes++;
+    },
+  };
+  const store = new TableStore({ client });
+  let calls = 0;
+  const next = await store.transact((d) => { calls++; return { ...d, dayTokens: (d.dayTokens ?? 0) + 1 }; });
+  assert.equal(calls, 2, "the first attempt's update lost to the deletion; the second ran the function again");
+  assert.deepEqual(next, { dayTokens: 1 }, "the second attempt read nothing, so the function started fresh");
+  assert.equal(t.writes, 1, "one write, a create, since the entity was gone when it was made");
+});
+
 test("any other failure of the table is passed on as it was", async () => {
   const boom = Object.assign(new Error("forbidden"), { statusCode: 403 });
   const store = new TableStore({ client: { getEntity: async () => { throw boom; } } });

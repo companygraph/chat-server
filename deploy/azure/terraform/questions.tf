@@ -1,10 +1,12 @@
-# The kept questions, ninety days, where one identity can read them and nothing else. Azure cannot
-# fork one log stream into two tables, so the environment's console lines reach a workspace of the
-# chat's own through a second diagnostic setting, and a transformation on each workspace decides
-# what stays: the chat's workspace keeps the chat's question lines and nothing else, and the
-# environment's general workspace keeps everything but them, so a question exists in one place with
-# one retention, as the Google sink and its exclusion ensure. A workspace names its transformation
-# and the transformation names its workspace, so the link is made by azapi after both exist.
+# The kept questions, ninety days. The analyst holds the only grant made for this workspace, but
+# the pull-request plan identity's Reader on the resource group very likely reads it as well,
+# which piece 3 confirms and narrows. Azure cannot fork one log stream into two tables, so the
+# environment's console lines reach a workspace of the chat's own through a second diagnostic
+# setting, and a transformation on each workspace decides what stays: the chat's workspace keeps
+# the chat's question lines and nothing else, and the environment's general workspace keeps
+# everything but them, so a question exists in one place with one retention, as the Google sink
+# and its exclusion ensure. A workspace names its transformation and the transformation names its
+# workspace, so the link is made by azapi after both exist.
 locals {
   question  = "ContainerAppName == 'chat' and tostring(parse_json(Log).kind) == 'question'"
   transform = "Microsoft-Table-ContainerAppConsoleLogs"
