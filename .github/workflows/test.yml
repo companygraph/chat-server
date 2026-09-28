@@ -21,6 +21,6 @@ jobs:
         with:
           terraform_version: 1.9.8
           terraform_wrapper: false
-      - run: terraform -chdir=deploy/terraform init -backend=false -input=false
-      - run: terraform -chdir=deploy/terraform validate
+      - run: terraform -chdir=deploy/google/terraform init -backend=false -input=false
+      - run: terraform -chdir=deploy/google/terraform validate
       - run: terraform fmt -check -recursive deploy
