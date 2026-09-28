@@ -7,6 +7,7 @@ import { TableStore } from "../lib/platform/azure/meter.mjs";
 import { googleIdentityToken } from "../lib/platform/google/identity.mjs";
 import { azureIdentityToken } from "../lib/platform/azure/identity.mjs";
 import { googleQuestions } from "../lib/platform/google/questions.mjs";
+import { azureQuestions } from "../lib/platform/azure/questions.mjs";
 
 const missing = (pkg) => () => Promise.reject(Object.assign(new Error(`Cannot find package '${pkg}' imported from /app/lib/platform/google/meter.mjs`), { code: "ERR_MODULE_NOT_FOUND" }));
 
@@ -74,12 +75,16 @@ test("the azure identity is the managed-identity endpoint's token", async () => 
 test("the questions of a deployment come from its platform, Google when it names none", async () => {
   assert.equal(await questionSource(undefined), googleQuestions);
   assert.equal(await questionSource("google"), googleQuestions);
-  assert.deepEqual(Object.keys(QUESTIONS), ["google"]);
+  assert.deepEqual(Object.keys(QUESTIONS), ["google", "azure"]);
 });
 
 test("a platform this release has no adapter for is refused by name, before anything signs in", async () => {
   let loaded = false;
-  await assert.rejects(questionSource("azure", { google: async () => { loaded = true; } }),
-    (e) => e.message === "deployment.json names platform azure, which is not one of google");
+  await assert.rejects(questionSource("aws", { google: async () => { loaded = true; } }),
+    (e) => e.message === "deployment.json names platform aws, which is not one of google");
   assert.equal(loaded, false);
+});
+
+test("the questions of a deployment on Azure come from Log Analytics", async () => {
+  assert.equal(await questionSource("azure"), azureQuestions);
 });
