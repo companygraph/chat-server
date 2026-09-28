@@ -10,9 +10,9 @@ import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { modelFor } from "../lib/model.mjs";
-import { Meter, MemoryStore } from "../lib/meter.mjs";
-import { FirestoreStore } from "../lib/firestore.mjs";
+import { Meter } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
+import { meterStore } from "../lib/platform.mjs";
 import { createHttpServer } from "../lib/http.mjs";
 
 const ICON_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
@@ -43,7 +43,7 @@ try {
   }
   const host = await connectHost(config.mcpUrl, { questionCap: config.questionIndexChars });
   const model = values.model === "fake" ? fakeModel : modelFor(config);
-  const store = config.meter === "memory" ? new MemoryStore() : new FirestoreStore();
+  const store = await meterStore(config.meter);
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
