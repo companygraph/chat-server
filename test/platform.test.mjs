@@ -4,6 +4,7 @@ import { meterStore, load, METERS, identityTokenSource, IDENTITIES, questionSour
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 import { googleIdentityToken } from "../lib/platform/google/identity.mjs";
+import { azureIdentityToken } from "../lib/platform/azure/identity.mjs";
 import { googleQuestions } from "../lib/platform/google/questions.mjs";
 
 const missing = (pkg) => () => Promise.reject(Object.assign(new Error(`Cannot find package '${pkg}' imported from /app/lib/platform/google/meter.mjs`), { code: "ERR_MODULE_NOT_FOUND" }));
@@ -46,7 +47,11 @@ for (const [name, make] of [["memory", () => new MemoryStore()], ["firestore", f
 
 test("the google identity is the metadata server's token", async () => {
   assert.equal(await identityTokenSource("google"), googleIdentityToken);
-  assert.deepEqual(Object.keys(IDENTITIES), ["google"]);
+  assert.deepEqual(Object.keys(IDENTITIES), ["google", "azure"]);
+});
+
+test("the azure identity is the managed-identity endpoint's token", async () => {
+  assert.equal(await identityTokenSource("azure"), azureIdentityToken);
 });
 
 test("the questions of a deployment come from its platform, Google when it names none", async () => {
