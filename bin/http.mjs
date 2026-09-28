@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // The process: the environment read once, the host connected, the model and the meter built,
-// the server listening. PORT is what Cloud Run sets. An operator error — an unknown flag, a
+// the server listening. PORT is what the platform sets. An operator error — an unknown flag, a
 // variable not set, a host that does not answer — is one line on stderr and exit 2, never a
 // stack. `--model fake` answers every message with one sentence and calls no tool, for a local
-// run without Vertex; `--meter` is CHAT_METER's, and `memory` is the local case.
+// run without a model; the meter, the identity and the log line are CHAT_METER's, CHAT_IDENTITY's
+// and CHAT_LOG's, and CHAT_METER=memory is the local case.
 import fs from "node:fs";
 import { line, useLogFormat } from "../lib/log.mjs";
 import { parseArgs } from "node:util";

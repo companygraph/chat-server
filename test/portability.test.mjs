@@ -28,3 +28,23 @@ test("lib/ and bin/ name no entity of the example and no fact of an instance", (
     for (const word of forbidden) assert.ok(!wholeWord(word).test(text), `${file} names "${word}"`);
   }
 });
+
+// A cloud's SDK is the platform's business: outside lib/platform/ a module reaches one only by
+// a dynamic import, at the moment the choice is made, so a deployment on one cloud never loads
+// another's.
+const CLOUD = /^\s*import\s[^;]*?from\s+["'](@google-cloud\/[^"']+|google-auth-library|@anthropic-ai\/vertex-sdk|@azure\/[^"']+)["']/m;
+
+// deploy/build/ runs in a deployment's image too, so it is held to the same rule.
+const buildSources = fs.readdirSync(path.join(root, "deploy", "build")).map((f) => path.join("deploy", "build", f));
+
+test("no module outside lib/platform/ imports a cloud SDK statically", () => {
+  for (const file of [...sources, ...buildSources].filter((f) => !f.startsWith(path.join("lib", "platform") + path.sep))) {
+    const m = CLOUD.exec(fs.readFileSync(path.join(root, file), "utf8"));
+    assert.equal(m, null, `${file} imports ${m?.[1]}`);
+  }
+});
+
+test("the guard can hit: a static import of a cloud SDK is found", () => {
+  assert.ok(CLOUD.test('import { Firestore } from "@google-cloud/firestore";'));
+  assert.ok(!CLOUD.test('const { X } = await import("@google-cloud/firestore");'));
+});
