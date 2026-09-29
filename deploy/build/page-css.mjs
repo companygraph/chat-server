@@ -1,6 +1,8 @@
-// The stylesheet a deployment hands the server for its page: the family's tokens, reset and
-// title contract from the design package, which is the deployment's own devDependency, then the
-// deployment's own layout from own.css. The fonts travel inside the sheet as data, since the
+// The stylesheet a deployment hands the server for its page: the family's tokens, reset, title
+// contract and header contract from the design package, which is the deployment's own
+// devDependency, then the deployment's own layout from own.css. The header contract is taken
+// whole though the page's row holds only the mark: its height, its band and its stickiness are
+// the block's, and a copy of three of its rules would drift from it. The fonts travel inside the sheet as data, since the
 // page has no static directory.
 import fs from "node:fs";
 import path from "node:path";
@@ -36,8 +38,9 @@ const faces = FONTS.map(({ family, file, weight }) => {
 const tokens = blockFor("design tokens", "page");
 const reset = blockFor("prose reset", null);
 const title = blockFor("title contract", null);
+const header = blockFor("header contract", null);
 const own = fs.readFileSync(path.join(ROOT, "own.css"), "utf8");
 fs.mkdirSync(DIST, { recursive: true });
 const out = path.join(DIST, "page.css");
-fs.writeFileSync(out, [licenses, faces, tokens, reset, title, own].join("\n\n") + "\n");
+fs.writeFileSync(out, [licenses, faces, tokens, reset, title, header, own].join("\n\n") + "\n");
 console.log(`wrote ${out}: ${fs.statSync(out).size} bytes`);
