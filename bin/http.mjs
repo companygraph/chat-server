@@ -43,9 +43,11 @@ try {
     pageIcon = `data:${type};base64,${fs.readFileSync(values["page-icon"]).toString("base64")}`;
   }
   const host = await connectHost(config.mcpUrl, { questionCap: config.questionIndexChars });
-  const identityToken = values.model !== "fake" && config.anthropicFederation ? await identityTokenSource(config.identity) : undefined;
+  // The model calls a source as (fetch, { timeoutMs }); the platform's own values ride along.
+  const source = values.model !== "fake" && config.anthropicFederation ? await identityTokenSource(config.identity) : undefined;
+  const identityToken = source && ((fetchFn, options) => source(fetchFn, { ...options, ...config.identityOptions }));
   const model = values.model === "fake" ? fakeModel : modelFor(config, { identityToken });
-  const store = await meterStore(config.meter);
+  const store = await meterStore(config.meter, config.meterOptions);
   const meter = new Meter(store, { monthTokens: config.monthTokens });
   const bucket = new Bucket();
   createHttpServer({ config, host, model, meter, bucket }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
