@@ -5,7 +5,7 @@ import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
-import { NAME_NOTE, DIAGRAM_RULE } from "../lib/prompt.mjs";
+import { NAME_NOTE, nameNote, DIAGRAM_RULE } from "../lib/prompt.mjs";
 import { startFixtureHost, EXAMPLE_ROOT } from "./helpers.mjs";
 
 let fixture, host;
@@ -81,7 +81,7 @@ test("a fifth round is not made: the last request forbids a tool call", async ()
   assert.equal(model.requests.length, MAX_ROUNDS + 1);
   assert.deepEqual(model.requests.at(-1).tool_choice, { type: "none" });
   assert.equal(model.requests.at(-1).messages.at(-1).content.at(-1).text, FINAL_NOTE, "and says so after the last tool's answer");
-  assert.equal(model.requests.at(-1).messages.at(-1).content.at(-2).text, NAME_NOTE, "after the naming note");
+  assert.equal(model.requests.at(-1).messages.at(-1).content.at(-2).text, nameNote("loop"), "after the naming note");
   assert.equal(model.requests.at(-1).messages.at(-1).content.at(-3).type, "tool_result");
   assert.equal(model.requests.at(-2).tool_choice, undefined);
   assert.ok(!JSON.stringify(model.requests.at(-2).messages).includes(FINAL_NOTE));
@@ -152,7 +152,7 @@ test("every request marks its newest block, which is what the next round resends
     assert.deepEqual(r.messages.at(-1).content.at(-1).cache_control, { type: "ephemeral" });
     assert.equal(r.tools.at(-1).cache_control, undefined);
   }
-  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, NAME_NOTE);
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, nameNote("hi"));
   assert.equal(model.requests[1].messages.at(-1).content.at(-2).type, "tool_result");
 });
 
@@ -160,10 +160,11 @@ test("the naming note follows every round's tool answers and never the visitor's
   const model = fakeModel([toolTurn("list_types", {}), toolTurn("list_types", {}), textTurn("ok")]);
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "Welche Entscheide gibt es?" }], lang: "de" }, collect().emit);
   assert.equal(model.requests.length, 3);
+  const note = nameNote("Welche Entscheide gibt es?");
   assert.ok(!JSON.stringify(model.requests[0].messages).includes(NAME_NOTE), "the first request is the visitor's message alone");
   for (const r of model.requests.slice(1)) {
     const last = r.messages.at(-1).content;
-    assert.equal(last.at(-1).text, NAME_NOTE, "the note is the newest block");
+    assert.equal(last.at(-1).text, note, "the note is the newest block");
     assert.ok(last.slice(0, -1).every((b) => b.type === "tool_result"), "after the tool answers it follows");
   }
   assert.equal(model.requests[2].messages.filter((m) => JSON.stringify(m).includes(NAME_NOTE)).length, 2, "each round's answers keep their note, so the prefix the cache holds does not move");
@@ -173,6 +174,7 @@ test("the naming note follows every round's tool answers and never the visitor's
   assert.match(NAME_NOTE, /in the case and gender the sentence needs/);
   assert.match(NAME_NOTE, /rendered into that language wherever it has a word for it; only a name the language keeps unchanged, such as \*\*MLOps\*\*, stands once and alone/);
   assert.match(NAME_NOTE, /never ß/);
+  assert.ok(note.startsWith('The visitor\'s last message is: "Welche Entscheide gibt es?". Write the answer in the language of that message'), "the note quotes the message whose language the answer takes");
 });
 
 test("a visitor who goes away stops the loop after the round it is in, and the meter is still settled", async () => {
