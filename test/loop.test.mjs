@@ -6,11 +6,20 @@ import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
 import { NAME_NOTE, nameNote, DIAGRAM_RULE } from "../lib/prompt.mjs";
-import { startFixtureHost, EXAMPLE_ROOT } from "./helpers.mjs";
+import { startFixtureHost, EXAMPLE_ROOT, exampleSnapshot } from "./helpers.mjs";
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
 after(async () => { await host.close(); await fixture.close(); });
+
+// The delivery process's phase ids, read off the fixture snapshot by address rather than
+// hardcoded, so a server that answers with the stable id instead of the address leaves these
+// tests holding.
+const fixtureEntities = exampleSnapshot().entities;
+const idOfAddress = (address) => fixtureEntities.find((e) => e.address === address).id;
+const specifyPhaseId = idOfAddress("processes/delivery/phases/specify");
+const buildPhaseId = idOfAddress("processes/delivery/phases/build");
+const releasePhaseId = idOfAddress("processes/delivery/phases/release");
 
 const usage = { input_tokens: 1000, output_tokens: 100 };
 const textTurn = (text) => ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage });
@@ -408,7 +417,7 @@ test("a diagram answer is the widget's to draw: its event after its names, and o
   assert.deepEqual(Object.keys(picture).sort(), ["mermaid", "nodes", "omitted", "shape", "title"]);
   assert.deepEqual([picture.shape, picture.title, picture.omitted], ["process", "Delivery", 0]);
   assert.match(picture.mermaid, /^flowchart LR\n/);
-  assert.deepEqual(picture.nodes.map((n) => n.id), ["processes/delivery/phases/specify", "processes/delivery/phases/build", "processes/delivery/phases/release"]);
+  assert.deepEqual(picture.nodes.map((n) => n.id), [specifyPhaseId, buildPhaseId, releasePhaseId]);
   const named = events[0][1].names.map((n) => n.id);
   for (const n of picture.nodes) assert.ok(named.includes(n.id), `${n.id} is linked where the answer writes it`);
   const result = model.requests[1].messages.at(-1).content[0];
@@ -459,9 +468,9 @@ test("a phase already cited is not named again when the process is drawn", async
   const { events, emit } = collect();
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "where is build?" }], lang: "en" }, emit);
   const named = events.filter(([e]) => e === "names").flatMap(([, d]) => d.names.map((n) => n.id));
-  assert.ok(events.some(([e, d]) => e === "cite" && d.id === "processes/delivery/phases/build"));
-  assert.ok(!named.includes("processes/delivery/phases/build"));
-  assert.ok(named.includes("processes/delivery/phases/specify"));
+  assert.ok(events.some(([e, d]) => e === "cite" && d.id === buildPhaseId));
+  assert.ok(!named.includes(buildPhaseId));
+  assert.ok(named.includes(specifyPhaseId));
 });
 
 test("diagramOf takes a whole diagram answer and nothing else", () => {
