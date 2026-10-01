@@ -14,6 +14,7 @@ resource "google_project_service" "chat" {
     "firebase.googleapis.com",
     "firebasehosting.googleapis.com",
     "aiplatform.googleapis.com",
+    "cloudquotas.googleapis.com",
     "firestore.googleapis.com",
     "secretmanager.googleapis.com",
     "logging.googleapis.com",
