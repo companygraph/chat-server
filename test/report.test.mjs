@@ -123,3 +123,11 @@ test("runReport takes a week by name and rebuilds it, and refuses a name that is
   assert.deepEqual(calls.put, ["reports/2026-W37.md"]);
   await assert.rejects(runReport({ list: async () => [], put: async () => {}, week: "yesterday" }), /a week is YYYY-Www/);
 });
+
+test("where answers were checked, the report counts their claims and lists each question with one its evidence did not carry", () => {
+  const md = renderReport([entry(), entry({ question: "When did it start?", claims: 3, unsupported: 1 }), entry({ question: "Who?", claims: 2, unsupported: 0 })], { week: "2026-W40", ...weekRange("2026-W40") });
+  assert.match(md, /^## Claims\n\n2 answers checked, 5 claims, 1 not carried by their evidence\.$/m);
+  assert.match(md, /^\| When did it start\? \| en \| 3 \| 1 \|$/m);
+  assert.doesNotMatch(md, /^\| Who\? \|/m);
+  assert.doesNotMatch(renderReport([entry()], { week: "2026-W40", ...weekRange("2026-W40") }), /## Claims/, "no section where nothing was checked");
+});
