@@ -585,7 +585,7 @@ test("the check reads the text, every returned entity and the tool answer it cam
   assert.ok(kinds.lastIndexOf("text") < kinds.indexOf("verdict"));
   assert.equal(seen[0].text, `Looking. ${EXAMPLE_ROOT} is the company.`);
   assert.equal(seen[0].returned[0].id, rootId, "the cited entity first, then what its answer named");
-  assert.ok(seen[0].evidence.get(rootId).includes(rootId), "the evidence is the tool answer the model was given");
+  assert.ok(seen[0].evidence.get(rootId).some((t) => t.includes(rootId)), "the evidence is the tool answer the model was given");
   assert.equal(seen[0].lang, "en");
   assert.deepEqual([seen[0].calls, seen[0].empty], [1, 0]);
   assert.equal(seen[0].answers.length, 1, "every tool answer of the message, for a claim naming none");
@@ -600,4 +600,28 @@ test("with no check there is no verdict event and no counts, and a check that co
     assert.equal(events.at(-1)[0], "done");
     assert.ok(!("claims" in r) && !("unsupported" in r));
   }
+});
+
+test("every tool answer that carried an entity is kept as its evidence, the search's and the fetch's", async () => {
+  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  const model = fakeModel([toolTurn("search", { query: EXAMPLE_ROOT, match: "name" }), toolTurn("get_entity", { id: rootId }), textTurn(`${EXAMPLE_ROOT} is the company.`)]);
+  const seen = [];
+  await answer({ host, model, meter: meter(), verdict: async (m) => { seen.push(m); return null; } }, { messages: [{ role: "user", content: "what is it?" }], lang: "en" }, () => {});
+  assert.equal(seen[0].evidence.get(rootId).length, 2);
+});
+
+test("a diagram's evidence is the note the model was given, not the picture's source", async () => {
+  const model = fakeModel([toolTurn("diagram", { shape: "process", id: "processes/delivery" }), textTurn("Delivery runs in three phases.")]);
+  const seen = [];
+  await answer({ host, model, meter: meter(), verdict: async (m) => { seen.push(m); return null; } }, { messages: [{ role: "user", content: "draw it" }], lang: "en" }, () => {});
+  assert.match(seen[0].answers[0], /"drawn":/);
+});
+
+test("a visitor who leaves while the check runs gets nothing more, not even done", async () => {
+  const ac = new AbortController();
+  const { events, emit } = collect();
+  const verdict = async (m) => { ac.abort(); assert.equal(m.signal, ac.signal, "the check is handed the request's signal"); return { event: { claims: [], threshold: null }, claims: 0, unsupported: 0 }; };
+  const r = await answer({ host, model: fakeModel([textTurn("Hello.")]), meter: meter(), verdict }, { messages: [{ role: "user", content: "hi" }], lang: "en", signal: ac.signal }, emit);
+  assert.deepEqual(events.map(([e]) => e), ["text"]);
+  assert.ok(!("claims" in r));
 });

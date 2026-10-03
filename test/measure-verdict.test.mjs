@@ -39,7 +39,7 @@ test("every case is run through the loop and checked, in both languages, and bot
   try {
     const { code, out } = await run({ ...withoutKey(), TYPESAFE_API_KEY: "k", CHAT_TYPESAFE_URL: `http://127.0.0.1:${server.address().port}/v1/systemone` });
     assert.equal(code, 0, out);
-    assert.equal(out.split("\n").filter((l) => /^ {2}(en|de) {2}/.test(l)).length, 16);
+    assert.equal(out.split("\n").filter((l) => /^ {2}(en|de) {2}/.test(l)).length, 32);
     assert.match(out, /^ {2}en {2}a title no tool returned, faulted: unsourced$/m);
     assert.match(out, /^en: the probability/m);
     assert.match(out, /^de: the probability/m);

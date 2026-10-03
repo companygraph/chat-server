@@ -6,7 +6,8 @@
 // It runs the loop itself over the fixture host, the meta-model's worked example, with a
 // scripted model: each case makes the tool calls a real answer would and writes one sentence,
 // once as the evidence carries it and once with a fault planted in it — a wrong date, a skill the
-// entity does not claim, a title no tool returned, an empty search said to be full — in English
+// entity does not claim, a title no tool returned, an empty search said to be full, a wrong
+// organization, a running period said to be finished, a one-off said to have run for years — in English
 // and in German. The check runs as the service runs it, budget and all. It prints each case's
 // verdict, and, per tenth of probability, how often the verdict was right, which here means it
 // counted a faulted sentence against the answer and a clean one not. Where that curve is near the
@@ -30,13 +31,20 @@ const judge = typesafeJudge({ key, ...(url ? { url } : {}) });
 
 const fixture = await startFixtureHost();
 const host = await connectHost(fixture.url);
+// The title index answers at once from what it has read, so the measuring reads it first, as
+// the service does when it comes up.
+await host.refreshTitles();
 const idOf = async (name) => (await host.call("search", { query: name, match: "name" })).data.results[0].id;
 const EXPERIENCE = "Splitting the billing domain";
 const calls = {
   experience: async () => [["get_entity", { id: await idOf(EXPERIENCE) }]],
   experienceAndSkill: async () => [["get_entity", { id: await idOf(EXPERIENCE) }], ["search", { query: "Product Discovery", match: "name" }]],
-  release: async () => [["get_entity", { id: await idOf("Release") }]],
+  both: async () => [["get_entity", { id: await idOf(EXPERIENCE) }], ["get_entity", { id: await idOf("Rebuilding the order pipeline") }]],
   nothing: async () => [["search", { query: "quantum roadmap", match: "words" }]],
+  pipeline: async () => [["get_entity", { id: await idOf("Rebuilding the order pipeline") }]],
+  purpose: async () => [["get_entity", { id: await idOf("Finding out what the order pipeline was for") }]],
+  billing: async () => [["get_entity", { id: await idOf("Deciding which billing goes first") }]],
+  talk: async () => [["get_entity", { id: await idOf("Conference talk — the speed-up nobody asked for") }]],
 };
 
 // Each case: the calls, and per language the clean sentence and the faulted one.
@@ -47,12 +55,24 @@ const CASES = [
   { name: "a skill the entity does not claim", calls: "experienceAndSkill",
     en: [`${EXPERIENCE} drew on Java Programming.`, `${EXPERIENCE} drew on Product Discovery.`],
     de: [`${EXPERIENCE} stützte sich auf Java Programming.`, `${EXPERIENCE} stützte sich auf Product Discovery.`] },
-  { name: "a title no tool returned", calls: "release", faultCalls: "experience",
-    en: ["Release watches the platform until the change has been exercised by real traffic.", "Release watches the platform until the change has been exercised by real traffic."],
-    de: ["Release beobachtet die Plattform, bis echter Verkehr die Änderung durchlaufen hat.", "Release beobachtet die Plattform, bis echter Verkehr die Änderung durchlaufen hat."] },
+  { name: "a title no tool returned", calls: "both", faultCalls: "experience",
+    en: [`${EXPERIENCE} came after Rebuilding the order pipeline.`, `${EXPERIENCE} came after Rebuilding the order pipeline.`],
+    de: [`${EXPERIENCE} folgte auf Rebuilding the order pipeline.`, `${EXPERIENCE} folgte auf Rebuilding the order pipeline.`] },
   { name: "an empty search said to be full", calls: "nothing",
     en: ["The model holds nothing on a quantum roadmap.", "The quantum roadmap ships in 2027."],
     de: ["Das Modell enthält nichts zu einer Quanten-Roadmap.", "Die Quanten-Roadmap erscheint 2027."] },
+  { name: "a wrong end date", calls: "pipeline",
+    en: ["Rebuilding the order pipeline ended in January 2022.", "Rebuilding the order pipeline ended in June 2020."],
+    de: ["Rebuilding the order pipeline endete im Januar 2022.", "Rebuilding the order pipeline endete im Juni 2020."] },
+  { name: "a wrong organization", calls: "purpose",
+    en: ["Finding out what the order pipeline was for was at Northwind Atelier.", "Finding out what the order pipeline was for was at a bank in Zürich."],
+    de: ["Finding out what the order pipeline was for war bei Northwind Atelier.", "Finding out what the order pipeline was for war bei einer Bank in Zürich."] },
+  { name: "a running period said to be finished", calls: "billing",
+    en: ["Deciding which billing goes first is still ongoing.", "Deciding which billing goes first was finished in 2023."],
+    de: ["Deciding which billing goes first läuft noch.", "Deciding which billing goes first wurde 2023 abgeschlossen."] },
+  { name: "a one-off said to have run for years", calls: "talk",
+    en: ["Conference talk — the speed-up nobody asked for was given in September 2021.", "Conference talk — the speed-up nobody asked for ran from 2019 to 2022."],
+    de: ["Conference talk — the speed-up nobody asked for wurde im September 2021 gehalten.", "Conference talk — the speed-up nobody asked for lief von 2019 bis 2022."] },
 ];
 
 const usage = { input_tokens: 0, output_tokens: 0 };

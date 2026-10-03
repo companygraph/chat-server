@@ -10,24 +10,37 @@ before(async () => { fixture = await startFixtureHost(); host = await connectHos
 after(async () => { await host.close(); await fixture.close(); });
 
 test("the index holds every entity the model holds, by id and title", async () => {
-  const titles = await host.titles();
+  await host.refreshTitles();
+  const titles = host.titles();
   const entities = exampleSnapshot().entities;
   assert.equal(titles.length, entities.length);
   assert.ok(titles.some((t) => t.title === EXAMPLE_ROOT));
   assert.ok(titles.every((t) => typeof t.id === "string" && typeof t.title === "string"));
 });
 
-test("the index is read once for a commit, and a failed read keeps what was read", async () => {
-  const first = await host.titles();
+test("the index answers at once, one walk serves every caller, and a failed walk waits out a cooldown", async () => {
+  const first = host.titles();
+  assert.ok(first.length > 0);
   const call = host.call;
   let calls = 0;
   host.call = async (...args) => { calls++; return call(...args); };
   try {
-    assert.equal(await host.titles(), first);
-    assert.equal(calls, 0, "no page is read again for the same commit");
+    assert.equal(host.titles(), first, "the same commit reads nothing");
+    assert.equal(calls, 0);
     host.provenance = { ...host.provenance, commit: "moved" };
-    host.call = async () => ({ isError: true, data: null, text: "" });
-    assert.equal(await host.titles(), first, "a failed read keeps the titles it had");
+    const a = host.refreshTitles(), b = host.refreshTitles();
+    assert.equal(a, b, "two callers share one walk");
+    assert.equal(host.titles(), first, "a caller during the walk gets what was read before, at once");
+    await a;
+    const walked = calls;
+    host.provenance = { ...host.provenance, commit: "moved again" };
+    host.call = async () => { calls++; return { isError: true, data: null, text: "" }; };
+    await host.refreshTitles();
+    const failedAt = calls;
+    assert.ok(host.titles().length > 0, "a failed walk keeps what was read");
+    await host.refreshTitles();
+    assert.equal(calls, failedAt, "a second walk waits out the cooldown");
+    assert.ok(walked > 0);
   } finally {
     host.call = call;
   }

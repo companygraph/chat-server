@@ -54,8 +54,12 @@ try {
   const bucket = new Bucket();
   // The answer check, where the deployment turned it on; the title index is read as the service
   // comes up, so the first answer does not wait on it.
-  const verdict = config.verdict ? verdictCheck({ judge: typesafeJudge({ key: config.typesafeKey }), titles: () => host.titles(), threshold: config.verdictThreshold }) : null;
-  if (verdict) host.titles().catch(() => {});
+  // A check that could not run is one warning line with its reason, never the answer or the key.
+  const warn = (fields) => console.log(line("chat.verdict", "WARNING", { kind: "verdict", ...fields }));
+  const verdict = config.verdict
+    ? verdictCheck({ judge: typesafeJudge({ key: config.typesafeKey }), titles: () => host.titles(), promptTitles: async () => (await host.questions()).titles, threshold: config.verdictThreshold, warn })
+    : null;
+  if (verdict) host.refreshTitles().catch(() => {});
   createHttpServer({ config, host, model, meter, bucket, verdict }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
     const port = this.address().port, commit = host.provenance?.commit ?? null;
     console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict }));
