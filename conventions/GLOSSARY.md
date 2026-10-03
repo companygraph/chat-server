@@ -20,6 +20,7 @@ The German cells are inline code because the prose check reads no language and a
 | reference instance | reference instance | `Referenz-Instanz` | mental-model's role in the family; the form blust.ch's ideas page chose. |
 | guest graph | guest graph | `Gast-Graph` | The short form, distinct from guest identity graph; blust.ch's ideas page. |
 | core | core | `core` | The directory in companygraph/meta-model and the release its version names; a name the ecosystem reads, so not `Kern`. Masculine, `der core`, as `der Kern` would be. |
+| pack | pack | `Pack` | A vocabulary beside core in companygraph/meta-model, such as the software pack; kept English like `core`, because the directory is `packs/` and the flag `--pack`, and a reader who met a German form would have to bridge to find them. Neuter, `das Pack`; plural `die Packs`, as companygraph.io's model page writes them. Not the skill pack, which is `Skill-Paket`. |
 | considered, not accepted | considered, not accepted | `Erwogen, nicht angenommen` | The design system's phrase for a candidate weighed and set aside; one form on every billing page. |
 | figure | figure | `Diagramm` | The drawn graph on a model page. The owner's choice over `Zeichnung`, which reads as a drawing by hand. |
 | experience | experience | `Erfahrung` | An entry in the model's experiences folder, whatever its kind; blust.ch's timeline and model pages. The row it makes on the timeline is an `Eintrag`. |
@@ -108,4 +109,4 @@ The German cells are inline code because the prose check reads no language and a
 | check | check | `Prüfung` | An automatic check a build or suite runs, as in “held to the English by a check, which stops the build.” The row for put up for scrutiny keeps `Prüfung` in that verb phrase for a person's judgment; used as the bare noun, it names the automatic check instead. Not `Check`, the anglicism, and not `Kontrolle`, which reads as a person's inspection. |
 | skill pack / skill bundle | skill pack / skill bundle | `Skill-Paket` | The loadable bundle of a skill's instructions and files. Neuter, `das Skill-Paket`; `Skill-Pack` was set aside because `Paket` is the ordinary German word and reads without a bridge. |
 
-English forms fixed here whose German no page carries yet, to be chosen the first time a text needs them: pack, design system.
+English forms fixed here whose German no page carries yet, to be chosen the first time a text needs them: design system.

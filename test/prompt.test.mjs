@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS, DIAGRAM_RULE, DEFAULT_QUESTION_INDEX_CHARS } from "../lib/prompt.mjs";
+import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS, DIAGRAM_RULE, DEFAULT_QUESTION_INDEX_CHARS, nameNote } from "../lib/prompt.mjs";
 
 // lib/prompt.mjs's RULES copied verbatim: at 63e6367, before the question index existed, and
 // since 0.12.2 with the escape sentence narrowed and the identity sentence added, both inside
@@ -81,7 +81,7 @@ test("QUESTION_RULE is the spec's sentence, told to get_entity a matched questio
 test("with no questions, the whole prompt is exactly what 0.9.0 produced for the same inputs", () => {
   const instructions = "Tagline one.\n\nTerms the tools use.";
   const types = [{ type: "feature", count: 5, owner: null }];
-  const language = "Answer in the language of the visitor's last message, whatever the language of the messages before it; when it does not tell, answer in German.";
+  const language = "Answer in the language of the visitor's last message, whatever the language of the messages before it. A message's language is the language its words are in, even where their grammar or spelling is a learner's: never answer in a language the visitor did not write in. When the message does not tell, answer in German.";
   const oldStyle = [instructions, typeMap(types), RULES_AT_0_9_0.join(" "), language].filter(Boolean).join("\n\n");
   assert.equal(systemPrompt(instructions, "de", types), oldStyle);
   assert.equal(systemPrompt(instructions, "de", types, []), oldStyle, "no questions given, the same as none of the new arguments existing");
@@ -198,4 +198,11 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /\bdiagram\b/);
   assert.match(DIAGRAM_RULE, /never the picture itself/);
   assert.match(DIAGRAM_RULE, /only the relations the tool listed/);
+});
+
+// An English question in German word order was answered in German on the companygraph.io host;
+// both the system prompt and the note sent with the tools' answers say the words decide.
+test("the language rule and the name note say a learner's grammar does not change the language", () => {
+  assert.match(systemPrompt("", "en"), /even where their grammar or spelling is a learner's: never answer in a language the visitor did not write in/);
+  assert.match(nameNote("this are the rules"), /its language is the language its words are in, even where their grammar is a learner's/);
 });
