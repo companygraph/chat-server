@@ -421,3 +421,17 @@ test("an ordinary fault still logs no message of its own", async () => {
   assert.equal(faults[0].detail, undefined);
   assert.ok(!errors.join("").includes("secret words"));
 });
+
+test("where the answer check ran, the kept line carries its two counts and still no word of the answer", async () => {
+  const { out, log } = lines();
+  const verdict = async () => ({ event: { claims: [{ from: 0, to: 19, ids: [], verdict: "unnamed", p: 0.9 }], threshold: null }, claims: 1, unsupported: 1 });
+  const server = createHttpServer({ config: config(), host, model: tools(textTurn("It is a fine answer.")), meter: new Meter(new MemoryStore(), { monthTokens: 1_000_000 }), bucket: new Bucket(), log, verdict });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  after(() => server.close());
+  const r = await post(`http://127.0.0.1:${server.address().port}`, { messages: [{ role: "user", content: "Is it?" }], lang: "en" });
+  const evs = await events(r);
+  assert.deepEqual(evs.map(([e]) => e).slice(-2), ["verdict", "done"]);
+  const line = JSON.parse(out[0]);
+  assert.deepEqual([line.claims, line.unsupported], [1, 1]);
+  assert.ok(!out[0].includes("fine answer"), "no word of the answer in the line");
+});

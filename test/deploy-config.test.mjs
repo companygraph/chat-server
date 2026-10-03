@@ -68,3 +68,12 @@ test("federation names its audience on Azure and never on Google", () => {
   assert.deepEqual(federationProblems({ ...azureChat, anthropic_federation: noAudience }, "azure"), ["audience is the client id of the app registration standing for the Claude API"]);
   assert.deepEqual(federationProblems({ ...googleChat, anthropic_federation: { ...googleChat.anthropic_federation, audience: f.audience } }, "google"), ["audience is not a field of anthropic_federation"]);
 });
+
+test("the answer check is a Google chat's switch, true or false, with a threshold between 0 and 1", () => {
+  const google = { domain: "chat.example.test", mcp_url: "https://mcp.example.test/mcp", origins: ["https://example.test"], month_tokens: 1, site_id: "chat-example" };
+  assert.deepEqual(chatProblems({ ...google, verdict: true, verdict_threshold: 0.8 }, "google"), []);
+  assert.deepEqual(chatProblems({ ...google, verdict: "yes" }, "google"), ["verdict is true or false"]);
+  assert.deepEqual(chatProblems({ ...google, verdict_threshold: 2 }, "google"), ["verdict_threshold is a probability between 0 and 1"]);
+  const azure = { domain: "chat.example.test", mcp_url: "https://mcp.example.test/mcp", origins: ["https://example.test"], month_tokens: 1, storage_account: "chatexample", provider: "anthropic", anthropic_federation: { rule_id: "fdrl_01AbC", organization_id: "00000000-0000-4000-8000-000000000000", service_account_id: "svac_01AbC", audience: "00000000-0000-4000-8000-000000000001" } };
+  assert.deepEqual(chatProblems({ ...azure, verdict: true }, "azure"), ["verdict is for a chat on Google"]);
+});

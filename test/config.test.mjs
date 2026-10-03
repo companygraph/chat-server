@@ -139,3 +139,13 @@ test("a table meter reads its address and identity, and refuses the start naming
   assert.throws(() => configFromEnv({ ...full, CHAT_METER: "table" }), /^Error: CHAT_METER=table needs CHAT_TABLE_URL, AZURE_CLIENT_ID, which are not set$/);
   assert.deepEqual(configFromEnv(full).meterOptions, {});
 });
+
+test("the answer check is off unless turned on, needs TypeSafe's key when on, and reads a threshold as a probability", () => {
+  const off = configFromEnv(full);
+  assert.deepEqual([off.verdict, off.typesafeKey, off.verdictThreshold], [false, null, null]);
+  const on = configFromEnv({ ...full, CHAT_VERDICT: "true", TYPESAFE_API_KEY: " ts-key ", CHAT_VERDICT_THRESHOLD: "0.8" });
+  assert.deepEqual([on.verdict, on.typesafeKey, on.verdictThreshold], [true, "ts-key", 0.8]);
+  assert.throws(() => configFromEnv({ ...full, CHAT_VERDICT: "true" }), /CHAT_VERDICT is true and TYPESAFE_API_KEY is not set/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_VERDICT: "yes" }), /CHAT_VERDICT is true or false: yes/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_VERDICT_THRESHOLD: "80" }), /CHAT_VERDICT_THRESHOLD is a probability between 0 and 1: 80/);
+});

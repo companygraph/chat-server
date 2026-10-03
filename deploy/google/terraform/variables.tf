@@ -52,3 +52,20 @@ variable "anthropic_federation" {
     error_message = "anthropic_federation is for model_provider anthropic."
   }
 }
+
+# The answer check (docs/INTERFACE.md, the verdict event). Off by default, so a deployment that
+# re-pins gains nothing it did not ask for. On, the module mounts the project's Secret Manager
+# secret `typesafe-key`, which the owner makes as the README says, and passes the threshold the
+# widget marks a claim above; with no threshold the widget marks nothing.
+variable "verdict" {
+  type    = bool
+  default = false
+}
+variable "verdict_threshold" {
+  type    = number
+  default = null
+  validation {
+    condition     = var.verdict_threshold == null || (var.verdict_threshold >= 0 && var.verdict_threshold <= 1)
+    error_message = "verdict_threshold is a probability between 0 and 1."
+  }
+}
