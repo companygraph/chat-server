@@ -24,6 +24,8 @@ A claim is found without a model. The answer is the Markdown subset the prompt a
 
 A claim names an entity where it writes the title of one the message cited or named, the same match the widget already makes to link them. From that, three findings need no model. A claim that names no entity breaks the second rule and is `unnamed`. A claim that writes a title the model holds but no tool returned in this message is `unsourced`, since the model had nothing to take it from. And a claim that is only connective prose, a sentence that introduces a list, is left to the model below, which has an option for it.
 
+Amended on 2026-10-03, after the first live answer on companygraph.io: a claim that names no entity is read against every tool answer of the message, and it is `unnamed` only where those answers do not carry it. One they carry keeps the judge's verdict, since a claim about a type, read from the schema, has no entity it could name, and counting it against the answer would make every answer about the schema read as unsupported.
+
 ## 4. The verdict
 
 The evidence of a claim is the text of every tool answer that carried an entity it names: the entity's own answer where the loop cited it, the row of the list where it was only named. The loop keeps a map from id to that text as it goes, cut at the 16,000 characters the model was given, never more, so the evidence is exactly what the model saw.

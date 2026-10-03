@@ -162,3 +162,11 @@ test("a check that could not run says why in one warning, with no key and no wor
   assert.deepEqual(warned, [{ reason: "TypeSafe answered 429" }]);
   assert.ok(!JSON.stringify(warned).includes("February"));
 });
+
+test("a claim naming no entity keeps the judge's verdict where the tool answers carry it, and is unnamed where they do not", async () => {
+  const of = async (pick) => (await verdictOf(message({ text: "An experience is one dated period." }), judging(pick).judge)).claims[0];
+  assert.deepEqual(await of("supported"), { from: 0, to: 34, ids: [], verdict: "supported", p: 0.9 });
+  assert.equal((await of("partial")).verdict, "partial");
+  assert.equal((await of("absent")).verdict, "unnamed");
+  assert.equal((await of("contradicted")).verdict, "unnamed");
+});
