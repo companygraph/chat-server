@@ -23,6 +23,9 @@ jobs:
           terraform_wrapper: false
       - run: terraform -chdir=deploy/google/terraform init -backend=false -input=false
       - run: terraform -chdir=deploy/google/terraform validate
+      # A plan with the providers mocked, which evaluates each variable's validation as a
+      # deployment's call does; validate alone never evaluates one.
+      - run: terraform -chdir=deploy/google/terraform test
       - run: terraform -chdir=deploy/azure/terraform init -backend=false -input=false
       - run: terraform -chdir=deploy/azure/terraform validate
       - run: terraform fmt -check -recursive deploy
