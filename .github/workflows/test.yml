@@ -12,6 +12,12 @@ jobs:
         with:
           node-version: 22
       - run: npm ci
+      # The JavaScript in lib/, bin/ and deploy/ is the source, and its types are JSDoc in the same
+      # files. The declarations in types/ are written from that JSDoc and committed, because a
+      # consumer takes the package by tag and builds nothing. TypeScript and Node's types are
+      # devDependencies and nothing else is: they are installed here to write the declarations
+      # into a temporary folder and fail when the committed ones are not what the JSDoc declares.
+      - run: npm run build:check
       - run: npm test
   terraform:
     runs-on: ubuntu-latest

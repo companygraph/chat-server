@@ -10,21 +10,44 @@
   "files": [
     "lib",
     "bin",
-    "deploy"
+    "deploy",
+    "types/lib",
+    "types/deploy"
   ],
   "bin": {
     "companygraph-chat-http": "bin/http.mjs",
     "companygraph-chat-deploy": "bin/deploy.mjs"
   },
   "exports": {
-    ".": "./lib/http.mjs",
-    "./errors": "./lib/errors.mjs",
-    "./config": "./lib/config.mjs",
-    "./shape": "./lib/shape.mjs",
-    "./page": "./lib/page.mjs",
-    "./deploy/tests": "./deploy/test/index.mjs"
+    ".": {
+      "types": "./types/lib/http.d.mts",
+      "default": "./lib/http.mjs"
+    },
+    "./errors": {
+      "types": "./types/lib/errors.d.mts",
+      "default": "./lib/errors.mjs"
+    },
+    "./config": {
+      "types": "./types/lib/config.d.mts",
+      "default": "./lib/config.mjs"
+    },
+    "./shape": {
+      "types": "./types/lib/shape.d.mts",
+      "default": "./lib/shape.mjs"
+    },
+    "./page": {
+      "types": "./types/lib/page.d.mts",
+      "default": "./lib/page.mjs"
+    },
+    "./deploy/tests": {
+      "types": "./types/deploy/test/index.d.mts",
+      "default": "./deploy/test/index.mjs"
+    }
   },
   "scripts": {
+    "build": "tsc",
+    "build:check": "node tools/build-check.mjs",
+    "typecheck": "tsc --noEmit",
     "fixtures": "node scripts/fixtures.mjs",
     "pretest": "node scripts/fixtures.mjs",
     "test": "node --test 'test/*.test.mjs'"
@@ -42,7 +65,9 @@
     "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
+    "@types/node": "22.20.4",
     "companygraph-mcp-server": "github:companygraph/mcp-server#v0.47.0",
-    "playwright": "^1.63.0"
+    "playwright": "^1.63.0",
+    "typescript": "7.0.2"
   }
 }
