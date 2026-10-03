@@ -16,6 +16,10 @@ test("the page carries the markup contract a deployment styles against", () => {
   for (const cls of ["bar", "brand", "shell", "title", "r70", "rcl", "tagline", "note", "lede", "ops", "head", "m", "p", "s"])
     assert.ok(new RegExp(`class="[^"]*\\b${cls}\\b`).test(html), `class ${cls} is emitted`);
   assert.match(html, /<main class="shell"/);
+  // The header's shell ends with it and comes before `main`, so a design can make that box
+  // sticky: inside `main` it would stick for the length of the page and then scroll away.
+  assert.match(html, /<div class="shell"><header><div class="bar">[\s\S]*?<\/header><\/div>\s*<main class="shell">/,
+    "the header sits in a shell of its own, ahead of main");
   assert.match(html, /<h2>The endpoint<\/h2>/);
   assert.match(html, /<h2>What it answers<\/h2>/);
   assert.match(html, /<h2>The fence<\/h2>/);

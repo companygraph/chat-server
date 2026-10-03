@@ -18,7 +18,7 @@ The marks and forms are the German section of `WRITING.md`: Sie, ss, «» and �
 
 ## What it never does
 
-It never changes an English word, never translates an element whose English is not reviewed, never renders a glossary term in any form but the glossary's, never writes German on a page whose note says the model's own words stay English in both views, and never commits.
+It never changes an English word, never translates an element whose English is not reviewed, never renders a glossary term in any form but the glossary's, never writes a translation into a model, which is written in the one language its `model/localization.md` names, and never commits.
 
 ## Before it reports
 

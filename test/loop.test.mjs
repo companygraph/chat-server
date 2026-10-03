@@ -1,15 +1,25 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing } from "../lib/loop.mjs";
+import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
-import { startFixtureHost, EXAMPLE_ROOT } from "./helpers.mjs";
+import { NAME_NOTE, nameNote, DIAGRAM_RULE } from "../lib/prompt.mjs";
+import { startFixtureHost, EXAMPLE_ROOT, exampleSnapshot } from "./helpers.mjs";
 
 let fixture, host;
 before(async () => { fixture = await startFixtureHost(); host = await connectHost(fixture.url); });
 after(async () => { await host.close(); await fixture.close(); });
+
+// The delivery process's phase ids, read off the fixture snapshot by address rather than
+// hardcoded, so a server that answers with the stable id instead of the address leaves these
+// tests holding.
+const fixtureEntities = exampleSnapshot().entities;
+const idOfAddress = (address) => fixtureEntities.find((e) => e.address === address).id;
+const specifyPhaseId = idOfAddress("processes/delivery/phases/specify");
+const buildPhaseId = idOfAddress("processes/delivery/phases/build");
+const releasePhaseId = idOfAddress("processes/delivery/phases/release");
 
 const usage = { input_tokens: 1000, output_tokens: 100 };
 const textTurn = (text) => ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage });
@@ -80,7 +90,8 @@ test("a fifth round is not made: the last request forbids a tool call", async ()
   assert.equal(model.requests.length, MAX_ROUNDS + 1);
   assert.deepEqual(model.requests.at(-1).tool_choice, { type: "none" });
   assert.equal(model.requests.at(-1).messages.at(-1).content.at(-1).text, FINAL_NOTE, "and says so after the last tool's answer");
-  assert.equal(model.requests.at(-1).messages.at(-1).content.at(-2).type, "tool_result");
+  assert.equal(model.requests.at(-1).messages.at(-1).content.at(-2).text, nameNote("loop"), "after the naming note");
+  assert.equal(model.requests.at(-1).messages.at(-1).content.at(-3).type, "tool_result");
   assert.equal(model.requests.at(-2).tool_choice, undefined);
   assert.ok(!JSON.stringify(model.requests.at(-2).messages).includes(FINAL_NOTE));
   assert.equal(events.at(-1)[0], "done");
@@ -150,7 +161,29 @@ test("every request marks its newest block, which is what the next round resends
     assert.deepEqual(r.messages.at(-1).content.at(-1).cache_control, { type: "ephemeral" });
     assert.equal(r.tools.at(-1).cache_control, undefined);
   }
-  assert.equal(model.requests[1].messages.at(-1).content.at(-1).type, "tool_result");
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, nameNote("hi"));
+  assert.equal(model.requests[1].messages.at(-1).content.at(-2).type, "tool_result");
+});
+
+test("the naming note follows every round's tool answers and never the visitor's own message", async () => {
+  const model = fakeModel([toolTurn("list_types", {}), toolTurn("list_types", {}), textTurn("ok")]);
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "Welche Entscheide gibt es?" }], lang: "de" }, collect().emit);
+  assert.equal(model.requests.length, 3);
+  const note = nameNote("Welche Entscheide gibt es?");
+  assert.ok(!JSON.stringify(model.requests[0].messages).includes(NAME_NOTE), "the first request is the visitor's message alone");
+  for (const r of model.requests.slice(1)) {
+    const last = r.messages.at(-1).content;
+    assert.equal(last.at(-1).text, note, "the note is the newest block");
+    assert.ok(last.slice(0, -1).every((b) => b.type === "tool_result"), "after the tool answers it follows");
+  }
+  assert.equal(model.requests[2].messages.filter((m) => JSON.stringify(m).includes(NAME_NOTE)).length, 2, "each round's answers keep their note, so the prefix the cache holds does not move");
+  assert.match(NAME_NOTE, /In an English answer, name every entity by its title alone/);
+  assert.match(NAME_NOTE, /verweist auf die \*\*Kundenliste\*\* \(The customer list\)/, "in a sentence the article stands outside the bold");
+  assert.doesNotMatch(NAME_NOTE, /\*\*(Der|Die|Das) /, "no example glues a nominative article into a name");
+  assert.match(NAME_NOTE, /in the case and gender the sentence needs/);
+  assert.match(NAME_NOTE, /rendered into that language wherever it has a word for it; only a name the language keeps unchanged, such as \*\*MLOps\*\*, stands once and alone/);
+  assert.match(NAME_NOTE, /never ß/);
+  assert.ok(note.startsWith('The visitor\'s last message is: "Welche Entscheide gibt es?". Write the answer in the language of that message'), "the note quotes the message whose language the answer takes");
 });
 
 test("a visitor who goes away stops the loop after the round it is in, and the meter is still settled", async () => {
@@ -372,4 +405,170 @@ test("foundNothing: a refused call, an error answer and an empty list are nothin
   assert.equal(foundNothing({ isError: false, data: { results: [{ id: "x", title: "X" }] } }), false);
   assert.equal(foundNothing({ isError: false, data: { entity: { id: "x", title: "X", references: [] } } }), false, "an entity with no references is the entity");
   assert.equal(foundNothing({ isError: false, data: { types: [] } }), false, "a schema answer is neither an entity nor a list of them");
+});
+
+test("a diagram answer is the widget's to draw: its event after its names, and only what it drew for the model", async () => {
+  const model = fakeModel([toolTurn("diagram", { shape: "process", id: "processes/delivery" }), textTurn("Delivery runs in three phases.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me the delivery process" }], lang: "en" }, emit);
+  assert.ok(model.requests[0].system[0].text.includes(DIAGRAM_RULE), "the host draws, so the model is told when to ask");
+  assert.deepEqual(events.map(([e]) => e), ["names", "diagram", "text", "done"]);
+  const picture = events[1][1];
+  assert.deepEqual(Object.keys(picture).sort(), ["mermaid", "nodes", "omitted", "shape", "title"]);
+  assert.deepEqual([picture.shape, picture.title, picture.omitted], ["process", "Delivery", 0]);
+  assert.match(picture.mermaid, /^flowchart LR\n/);
+  assert.deepEqual(picture.nodes.map((n) => n.id), [specifyPhaseId, buildPhaseId, releasePhaseId]);
+  const named = events[0][1].names.map((n) => n.id);
+  for (const n of picture.nodes) assert.ok(named.includes(n.id), `${n.id} is linked where the answer writes it`);
+  const result = model.requests[1].messages.at(-1).content[0];
+  assert.equal(result.type, "tool_result");
+  assert.doesNotMatch(result.content, /flowchart|-->/);
+  const note = JSON.parse(result.content);
+  // Two forward edges and the example's two back flows, each phase's "If not met" row.
+  assert.deepEqual([note.shape, note.title, note.edges, note.omitted], ["process", "Delivery", 4, 0]);
+  assert.deepEqual(note.nodes, [{ title: "Specify", type: "phase" }, { title: "Build", type: "phase" }, { title: "Release", type: "phase" }]);
+  assert.deepEqual(note.relations, [
+    { from: "Specify", fromType: "phase", to: "Build", toType: "phase", label: "Reviewer" },
+    { from: "Build", fromType: "phase", to: "Release", toType: "phase", label: "Reviewer" },
+    { from: "Specify", fromType: "phase", to: "Specify", toType: "phase", label: "Reviewer: reshaped" },
+    { from: "Build", fromType: "phase", to: "Build", toType: "phase", label: "Reviewer: reworked" },
+  ]);
+  assert.match(note.drawn, /under your answer/);
+  assert.match(note.drawn, /calling each by its type/);
+  assert.match(note.drawn, /state only the relations listed in relations/);
+});
+
+test("a refused diagram draws nothing, and the model reads the refusal", async () => {
+  const model = fakeModel([toolTurn("diagram", { shape: "process", id: "nothing/here" }), textTurn("The model does not say.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me a process" }], lang: "en" }, emit);
+  assert.ok(!events.some(([e]) => e === "diagram"));
+  const result = model.requests[1].messages.at(-1).content[0];
+  assert.equal(result.is_error, true);
+  assert.match(result.content, /nothing\/here/);
+});
+
+test("two diagrams in one message are two events, in the order they were drawn", async () => {
+  const model = fakeModel([
+    toolTurn("diagram", { shape: "process", id: "processes/delivery" }),
+    toolTurn("diagram", { shape: "neighborhood", id: "concepts/invoice" }),
+    textTurn("Here is how the invoice connects."),
+  ]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me" }], lang: "en" }, emit);
+  assert.deepEqual(events.filter(([e]) => e === "diagram").map(([, d]) => d.shape), ["process", "neighborhood"]);
+});
+
+test("a phase already cited is not named again when the process is drawn", async () => {
+  const model = fakeModel([
+    toolTurn("get_entity", { id: "processes/delivery/phases/build" }),
+    toolTurn("diagram", { shape: "process", id: "processes/delivery" }),
+    textTurn("Build is the second phase."),
+  ]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "where is build?" }], lang: "en" }, emit);
+  const named = events.filter(([e]) => e === "names").flatMap(([, d]) => d.names.map((n) => n.id));
+  assert.ok(events.some(([e, d]) => e === "cite" && d.id === buildPhaseId));
+  assert.ok(!named.includes(buildPhaseId));
+  assert.ok(named.includes(specifyPhaseId));
+});
+
+test("diagramOf takes a whole diagram answer and nothing else", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "phase" }];
+  const data = { shape: "process", title: "D", mermaid: "flowchart LR", nodes, edges: 0, omitted: 0, model: {} };
+  assert.deepEqual(diagramOf("diagram", { isError: false, data }), { shape: "process", title: "D", mermaid: "flowchart LR", nodes, omitted: 0, links: [] });
+  assert.equal(diagramOf("search", { isError: false, data }), null);
+  assert.equal(diagramOf("diagram", { isError: true, data: { error: { code: "cannot_draw" } } }), null);
+  assert.equal(diagramOf("diagram", { isError: false, data: { shape: "process", mermaid: "flowchart LR" } }), null);
+  assert.equal(diagramOf("diagram", { isError: false, data: null }), null);
+});
+
+test("diagramOf drops a malformed node rather than throw, and refuses a picture with none left", () => {
+  const valid = { node: "n0", id: "a", title: "A", type: "phase" };
+  const data = { shape: "process", title: "D", mermaid: "flowchart LR", nodes: [null, valid, { node: "n1", id: "b", title: 5 }], edges: 0, omitted: 0 };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.nodes, [valid]);
+  const allInvalid = { ...data, nodes: [null, { node: "n1", id: "b", title: 5 }] };
+  assert.equal(diagramOf("diagram", { isError: false, data: allInvalid }), null);
+});
+
+test("diagramOf drops a link whose end is a dropped node, and one whose label is not a string", () => {
+  const kept = { node: "n0", id: "a", title: "A", type: "phase" };
+  const dropped = { node: "n1", id: "b", title: 5 };
+  const data = {
+    shape: "process", title: "D", mermaid: "flowchart LR", nodes: [kept, dropped], edges: 0, omitted: 0,
+    links: [{ from: "n0", to: "n1", label: "to a dropped node" }, { from: "n0", to: "n0", label: 5 }, { from: "n0", to: "n0", label: "kept" }],
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.links, [{ from: "n0", to: "n0", label: "kept" }]);
+});
+
+test("diagramNote caps relations at 60 and says how many more the picture drew", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "concept" }, { node: "n1", id: "b", title: "B", type: "concept" }];
+  const links = Array.from({ length: 65 }, () => ({ from: "n0", to: "n1", label: "x" }));
+  const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 65, omitted: 0, links }));
+  assert.equal(note.relations.length, 60);
+  assert.equal(note.relationsOmitted, 5);
+  assert.deepEqual(note.relations[0], { from: "A", fromType: "concept", to: "B", toType: "concept", label: "x" });
+});
+
+test("diagramNote gives an empty relations list where the host answers no links", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "concept" }];
+  const note = JSON.parse(diagramNote({ shape: "neighborhood", title: "A", nodes, edges: 0, omitted: 0 }));
+  assert.deepEqual(note.relations, []);
+  assert.ok(!("relationsOmitted" in note));
+});
+
+test("diagramNote says what was drawn, by title and type, and holds no source", () => {
+  const note = JSON.parse(diagramNote({ shape: "concepts", title: null, mermaid: "classDiagram", nodes: [{ node: "n0", id: "a", title: "Claim", type: "concept" }], edges: 3, omitted: 1 }));
+  assert.deepEqual([note.shape, note.title, note.nodes, note.edges, note.omitted], ["concepts", null, [{ title: "Claim", type: "concept" }], 3, 1]);
+  assert.equal("mermaid" in note, false);
+  assert.match(note.drawn, /calling each by its type/);
+});
+
+test("diagramNote says what a process picture's arrows mean, and only for a process", () => {
+  const nodes = [{ node: "n0", id: "p/shape", title: "Shape", type: "phase" }, { node: "n1", id: "p/spec", title: "Spec", type: "phase" }];
+  const links = [{ from: "n0", to: "n1", label: "Owner" }, { from: "n1", to: "n1", label: "Owner: reshaped, dropped" }];
+  const note = JSON.parse(diagramNote({ shape: "process", title: "Delivery", nodes, edges: 2, omitted: 0, links }));
+  assert.match(note.process, /approve/);
+  assert.match(note.process, /owns nothing/);
+  assert.match(note.process, /Stop/);
+  assert.match(note.process, /Gate/);
+  for (const shape of ["concepts", "neighborhood"]) {
+    assert.equal("process" in JSON.parse(diagramNote({ shape, title: "A", nodes, edges: 2, omitted: 0, links })), false, shape);
+  }
+});
+
+test("a picture of the schemas keeps what every other type declares and the core for the note, and sends neither to the widget", () => {
+  const nodes = [
+    { node: "n0", id: "core/phase", title: "phase", type: "schema", url: "https://github.com/o/r/blob/c/meta/core/phase-schema.md" },
+    { node: "n1", id: "core/process", title: "process", type: "schema", url: "https://github.com/o/r/blob/c/meta/core/process-schema.md" },
+  ];
+  const data = {
+    shape: "schema", title: null, mermaid: "classDiagram", nodes, edges: 1, omitted: 27,
+    links: [{ from: "n0", to: "n1", label: "nested-in" }],
+    everyType: [{ via: "source", to: "source", multiplicity: "1" }, { via: 5 }], model: { core: "0.45.0" },
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  assert.equal(picture.core, "0.45.0");
+  assert.equal(picture.nodes[0].url, nodes[0].url, "the widget links a type by its url");
+  const note = JSON.parse(diagramNote({ ...picture, edges: 1 }));
+  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  assert.match(note.schemas, /core 0\.45\.0/);
+  assert.match(note.schemas, /say it once/);
+  assert.deepEqual(note.nodes, [{ title: "phase", type: "schema" }, { title: "process", type: "schema" }]);
+  assert.deepEqual(note.relations, [{ from: "phase", fromType: "schema", to: "process", toType: "schema", label: "nested-in" }]);
+  assert.equal("everyType" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
+});
+
+test("a type in a picture of the schemas is no name the answer links", () => {
+  const data = { shape: "schema", nodes: [{ node: "n0", id: "core/role", title: "role", type: "schema" }, { node: "n1", id: "concepts/claim", title: "Claim", type: "concept" }] };
+  assert.deepEqual(namesIn(data), [{ id: "concepts/claim", title: "Claim" }]);
+});
+
+test("the diagram rule sends the meta-model to the schema shape, never to the concepts", () => {
+  assert.match(DIAGRAM_RULE, /meta-model, the schemas or the types/);
+  assert.match(DIAGRAM_RULE, /shape schema/);
+  assert.match(DIAGRAM_RULE, /not shape concepts/);
 });

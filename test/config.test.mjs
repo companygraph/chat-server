@@ -61,3 +61,81 @@ test("a key names the provider; none means Vertex", () => {
   assert.equal(c.provider, "anthropic");
   assert.equal(configFromEnv({ ...full, ANTHROPIC_API_KEY: "  " }).provider, "vertex", "a blank key is no key");
 });
+
+const ids = {
+  ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01test",
+  ANTHROPIC_ORGANIZATION_ID: "00000000-0000-4000-8000-000000000000",
+  ANTHROPIC_SERVICE_ACCOUNT_ID: "svac_01test",
+};
+
+test("three federation ids name the Anthropic provider without a key, and the workspace is optional", () => {
+  const c = configFromEnv({ ...full, ...ids });
+  assert.equal(c.provider, "anthropic");
+  assert.equal(c.credential, "federation");
+  assert.equal(c.anthropicKey, null);
+  assert.deepEqual(c.anthropicFederation, { ruleId: "fdrl_01test", organizationId: "00000000-0000-4000-8000-000000000000", serviceAccountId: "svac_01test", workspaceId: null });
+  assert.equal(configFromEnv({ ...full, ...ids, ANTHROPIC_WORKSPACE_ID: " wrkspc_01test " }).anthropicFederation.workspaceId, "wrkspc_01test");
+});
+
+test("the credential is named on every path", () => {
+  assert.equal(configFromEnv(full).credential, "google");
+  assert.equal(configFromEnv(full).anthropicFederation, null);
+  assert.equal(configFromEnv({ ...full, ANTHROPIC_API_KEY: "sk-ant-test" }).credential, "key");
+});
+
+test("a key beside the federation ids is refused, since the key would win without a word", () => {
+  assert.throws(() => configFromEnv({ ...full, ...ids, ANTHROPIC_API_KEY: "sk-ant-test" }), /ANTHROPIC_API_KEY and ANTHROPIC_FEDERATION_RULE_ID are both set/);
+});
+
+test("a partial set of federation ids names each one missing, and a workspace alone is refused", () => {
+  assert.throws(() => configFromEnv({ ...full, ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01test" }), /ANTHROPIC_ORGANIZATION_ID, ANTHROPIC_SERVICE_ACCOUNT_ID are not set/);
+  assert.throws(() => configFromEnv({ ...full, ...ids, ANTHROPIC_SERVICE_ACCOUNT_ID: "  " }), /ANTHROPIC_SERVICE_ACCOUNT_ID is not set/);
+  assert.throws(() => configFromEnv({ ...full, ANTHROPIC_WORKSPACE_ID: "wrkspc_01test" }), /ANTHROPIC_WORKSPACE_ID is set without/);
+});
+
+test("the three choices default to what Google runs today", () => {
+  const c = configFromEnv(full);
+  assert.equal(c.meter, "firestore");
+  assert.equal(c.identity, "google");
+  assert.equal(c.log, "google");
+});
+
+test("each choice takes its values and refuses any other by name, whatever the case", () => {
+  const c = configFromEnv({ ...full, CHAT_METER: "memory", CHAT_IDENTITY: "google", CHAT_LOG: "plain" });
+  assert.equal(c.meter, "memory");
+  assert.equal(c.log, "plain");
+  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "Firestore" }), /^Error: CHAT_METER is not one of firestore memory table: Firestore$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_IDENTITY: "aws" }), /^Error: CHAT_IDENTITY is not one of google azure: aws$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_LOG: "json" }), /^Error: CHAT_LOG is not one of google plain: json$/);
+});
+
+const fed = { ANTHROPIC_FEDERATION_RULE_ID: "fdrl_01x", ANTHROPIC_ORGANIZATION_ID: "00000000-0000-4000-8000-000000000000", ANTHROPIC_SERVICE_ACCOUNT_ID: "svac_01x" };
+
+test("a project and a region are asked for only when the provider is Vertex", () => {
+  const f = configFromEnv({ ...full, ...fed, CHAT_PROJECT: undefined, CHAT_REGION: undefined });
+  assert.equal(f.provider, "anthropic");
+  assert.equal(f.project, null);
+  assert.equal(f.region, null);
+  const k = configFromEnv({ ...full, ANTHROPIC_API_KEY: "sk-ant-x", CHAT_PROJECT: "", CHAT_REGION: "" });
+  assert.equal(k.project, null);
+  assert.throws(() => configFromEnv({ ...full, CHAT_PROJECT: undefined }), /^Error: CHAT_PROJECT is not set$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_REGION: " " }), /^Error: CHAT_REGION is not set$/);
+});
+
+const azureIdentity = { IDENTITY_ENDPOINT: "http://localhost:42356/msi/token", IDENTITY_HEADER: "hdr-1", AZURE_CLIENT_ID: "11111111-2222-3333-4444-555555555555", CHAT_IDENTITY_AUDIENCE: "api://66666666-7777-8888-9999-000000000000" };
+
+test("an Azure identity reads its four values, and refuses the start naming every one missing", () => {
+  const c = configFromEnv({ ...full, ...fed, CHAT_IDENTITY: "azure", ...azureIdentity });
+  assert.deepEqual(c.identityOptions, { identityEndpoint: "http://localhost:42356/msi/token", identityHeader: "hdr-1", clientId: "11111111-2222-3333-4444-555555555555", audience: "api://66666666-7777-8888-9999-000000000000" });
+  assert.throws(() => configFromEnv({ ...full, ...fed, CHAT_IDENTITY: "azure", IDENTITY_ENDPOINT: "http://x" }), /^Error: CHAT_IDENTITY=azure needs IDENTITY_HEADER, AZURE_CLIENT_ID, CHAT_IDENTITY_AUDIENCE, which are not set$/);
+  assert.throws(() => configFromEnv({ ...full, ...fed, CHAT_IDENTITY: "azure", ...azureIdentity, CHAT_IDENTITY_AUDIENCE: " " }), /^Error: CHAT_IDENTITY=azure needs CHAT_IDENTITY_AUDIENCE, which is not set$/);
+  assert.deepEqual(configFromEnv({ ...full, ...fed }).identityOptions, {});
+  assert.deepEqual(configFromEnv({ ...full, CHAT_IDENTITY: "azure" }).identityOptions, {}, "without federation no token is asked for, so nothing is needed");
+});
+
+test("a table meter reads its address and identity, and refuses the start naming what is missing", () => {
+  const c = configFromEnv({ ...full, CHAT_METER: "table", CHAT_TABLE_URL: "https://acct.table.core.windows.net/", AZURE_CLIENT_ID: "11111111-2222-3333-4444-555555555555" });
+  assert.deepEqual(c.meterOptions, { tableUrl: "https://acct.table.core.windows.net/", clientId: "11111111-2222-3333-4444-555555555555" });
+  assert.throws(() => configFromEnv({ ...full, CHAT_METER: "table" }), /^Error: CHAT_METER=table needs CHAT_TABLE_URL, AZURE_CLIENT_ID, which are not set$/);
+  assert.deepEqual(configFromEnv(full).meterOptions, {});
+});

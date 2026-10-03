@@ -1,0 +1,8 @@
+{
+  "pins": [
+    { "kind": "conventions", "file": "conventions.json", "repo": "robertblust/conventions" },
+    { "kind": "npm-tag", "file": "package.json", "repo": "companygraph/mcp-server", "after": ["node -e \"const fs=require('fs');const l=JSON.parse(fs.readFileSync('package-lock.json'));delete l.packages['node_modules/companygraph-meta-model'];fs.writeFileSync('package-lock.json',JSON.stringify(l,null,2)+'\\n')\" && rm -rf node_modules/companygraph-meta-model && npm install"] }
+  ],
+  "verify": ["npm test", "terraform -chdir=deploy/google/terraform init -backend=false -input=false", "terraform -chdir=deploy/google/terraform validate", "terraform -chdir=deploy/azure/terraform init -backend=false -input=false", "terraform -chdir=deploy/azure/terraform validate", "terraform fmt -check -recursive deploy"],
+  "release": ["npm version {version} --no-git-tag-version"]
+}

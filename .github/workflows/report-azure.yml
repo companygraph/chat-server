@@ -1,0 +1,33 @@
+# The week's report of a deployment's chat questions on Azure, called by the release chat/package.json
+# pins on the deployment's own schedule. The run signs in as the chat's analyst, whose federated
+# credential admits a run on main, and a schedule runs on main. The log here carries counts and
+# never a question: a public repository's log is public.
+name: report
+on:
+  workflow_call:
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: chat
+    steps:
+      - uses: actions/checkout@v7
+      - run: |
+          jq -r '"TENANT=\(.tenant_id)\nSUBSCRIPTION=\(.subscription_id)"' ../deployment.json >> "$GITHUB_ENV"
+          echo "ANALYST=$(jq -r .analyst_client_id chat.json)" >> "$GITHUB_ENV"
+      # The analyst holds rights on one workspace and one container and none at the subscription.
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ env.ANALYST }}
+          tenant-id: ${{ env.TENANT }}
+          subscription-id: ${{ env.SUBSCRIPTION }}
+          allow-no-subscriptions: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx companygraph-chat-deploy report

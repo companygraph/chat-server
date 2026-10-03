@@ -15,6 +15,15 @@ resource "google_project_iam_member" "chat" {
 
 locals {
   run_host = var.run_host
+  # The SDK's own names, so the environment reads the same to anyone who knows the SDK.
+  federation_env = var.anthropic_federation == null ? {} : {
+    for k, v in {
+      ANTHROPIC_FEDERATION_RULE_ID = var.anthropic_federation.rule_id
+      ANTHROPIC_ORGANIZATION_ID    = var.anthropic_federation.organization_id
+      ANTHROPIC_SERVICE_ACCOUNT_ID = var.anthropic_federation.service_account_id
+      ANTHROPIC_WORKSPACE_ID       = var.anthropic_federation.workspace_id
+    } : k => v if v != null
+  }
 }
 
 resource "google_cloud_run_v2_service" "chat" {
@@ -71,11 +80,13 @@ resource "google_cloud_run_v2_service" "chat" {
         name  = "CHAT_PROXY_HOPS"
         value = tostring(var.proxy_hops)
       }
-      # With the Anthropic API, the key rides in from the project's secret, latest version. The
-      # secret is the owner's: the module neither makes it nor grants access to it, so a deploy
-      # that mounts it before the owner's three commands fails at Cloud Run's own check, by name.
+      # With the Anthropic API and no federation, the key rides in from the project's secret,
+      # latest version. The secret is the owner's: the module neither makes it nor grants access
+      # to it, so a deploy that mounts it before the owner's three commands fails at Cloud Run's
+      # own check, by name. With federation the key is not mounted at all, and the service
+      # refuses to start with both, so the switch is this one condition.
       dynamic "env" {
-        for_each = var.model_provider == "anthropic" ? [1] : []
+        for_each = var.model_provider == "anthropic" && var.anthropic_federation == null ? [1] : []
         content {
           name = "ANTHROPIC_API_KEY"
           value_source {
@@ -84,6 +95,13 @@ resource "google_cloud_run_v2_service" "chat" {
               version = "latest"
             }
           }
+        }
+      }
+      dynamic "env" {
+        for_each = local.federation_env
+        content {
+          name  = env.key
+          value = env.value
         }
       }
     }

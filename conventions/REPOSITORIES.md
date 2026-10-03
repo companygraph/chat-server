@@ -32,10 +32,59 @@ What is listed here is the family; what is not listed is outside it. An agent wo
 
 ## What pins what
 
-The three sites pin `robertblust/design` by tag in `package.json`, and `npm run design` writes the fenced copies. blust.ch pins `robertblust/mental-model`, companygraph.io pins `companygraph/meta-model` and `companygraph/mental-model`, and guestgraph.io pins `guestgraph/mental-model`, each by commit in `source.json`, and each builds its model pages from that commit. blust.ch and guestgraph.io also depend on `companygraph/meta-model` by tag for the instance parser. The three instances, `robertblust/mental-model`, `companygraph/mental-model` and `guestgraph/mental-model`, each vendor meta-model's `core/` at a release named in their own manifest. The MCP server depends on `companygraph/meta-model` by tag for the same parser; each of its three deployments pins an instance by commit in `source.json`, mcp.blust.ch `robertblust/mental-model`, mcp.companygraph.io `companygraph/mental-model` and mcp.guestgraph.io `guestgraph/mental-model`, and the server by tag in `package.json`, and builds and deploys with the parts the server ships under `deploy/`. The chat server pins nothing of the family: it is a client of whichever MCP host a deployment names, and each of the same three deployments pins it by tag in `chat/package.json` and deploys it beside the host from the parts it ships under `deploy/`, so a re-pin of the host is a change the chat sees without one of its own. The Obsidian plugin depends on `companygraph/meta-model` by tag for the parser and the checks, and bundles them into what it releases. Every member pins this repository by tag in `conventions.json`.
+The three sites pin `robertblust/design` by tag in `package.json`, and `npm run design` writes the fenced copies. blust.ch pins `robertblust/mental-model`, companygraph.io pins `companygraph/meta-model` and `companygraph/mental-model`, and guestgraph.io pins `guestgraph/mental-model`, each by commit in `source.json`, and each builds its model pages from that commit. All three sites also depend on `companygraph/meta-model` by tag in `package.json` for the instance parser, and take `companygraph/mcp-server` by tag there too. guestgraph.io pins `guestgraph/engine` and `guestgraph/connector-apaleo` by commit in `api-sources.json`, and builds its API pages from the OpenAPI specification each commit holds. The three instances, `robertblust/mental-model`, `companygraph/mental-model` and `guestgraph/mental-model`, each vendor meta-model's `core/` at the release that `core.version` names in their own `.companygraph/manifest.json`. The engine and the connector each vendor `guestgraph/service-conventions` at the tag in `service-conventions.json`, and the connector pins the contracts it implements, which live under the engine's `specs/`, by commit in `src/main/resources/api/sources.json`. The MCP server depends on `companygraph/meta-model` by tag in `package.json` for the same parser; each of its three deployments pins an instance by commit in `source.json`, mcp.blust.ch `robertblust/mental-model`, mcp.companygraph.io `companygraph/mental-model` and mcp.guestgraph.io `guestgraph/mental-model`, and the server and `robertblust/design` by tag in `package.json`, and builds and deploys with the parts the server ships under `deploy/`. The chat server takes `companygraph/mcp-server` by tag in `package.json` as a development dependency and is a client of whichever MCP host a deployment names, and each of the same three deployments pins it and `robertblust/design` by tag in `chat/package.json` and deploys it beside the host from the parts it ships under `deploy/`, so a re-pin of the host is a change the chat sees without one of its own. The Obsidian plugin depends on `companygraph/meta-model` by tag in `package.json` for the parser and the checks, and bundles them into what it releases. Every member pins this repository by tag in `conventions.json`.
+
+The same pins, drawn: an arrow runs from the member that pins to the repository it pins, and its label says how. Each node is named as its repository is, under its organization.
+
+```mermaid
+flowchart TB
+  subgraph robertblust
+    design[design]
+    blust[robertblust.github.io]
+    rbmm[mental-model]
+    mcpblust[mcp-blust-ch]
+  end
+  subgraph companygraph
+    cgio[companygraph.github.io]
+    meta[meta-model]
+    cgmm[mental-model]
+    mcpsrv[mcp-server]
+    chat[chat-server]
+    mcpcg[mcp-companygraph-io]
+    obsidian[obsidian-plugin]
+  end
+  subgraph guestgraph
+    ggio[guestgraph.github.io]
+    engine[engine]
+    connector[connector-apaleo]
+    svc[service-conventions]
+    ggmm[mental-model]
+    mcpgg[mcp-guestgraph-io]
+  end
+  blust & cgio & ggio -->|tag| design
+  blust & ggio -->|tag| meta
+  cgio -->|tag, commit| meta
+  blust -->|commit| rbmm
+  cgio -->|commit| cgmm
+  ggio -->|commit| ggmm
+  ggio -->|commit| engine & connector
+  rbmm & cgmm & ggmm -->|release of core/| meta
+  mcpsrv & obsidian -->|tag| meta
+  blust & cgio & ggio -->|tag| mcpsrv
+  chat -->|tag| mcpsrv
+  mcpblust & mcpcg & mcpgg -->|tag| design
+  engine & connector -->|tag| svc
+  connector -->|commit| engine
+  mcpblust & mcpcg & mcpgg -->|tag| mcpsrv & chat
+  mcpblust -->|commit| rbmm
+  mcpcg -->|commit| cgmm
+  mcpgg -->|commit| ggmm
+```
+
+Every member also pins `robertblust/conventions`, and drawn that would be an arrow from every node to one more; it is left out, and with it `robertblust/field-notes`, `guestgraph/.github` and `companygraph/.github`, which pin nothing else. A test holds the drawing to the table: each repository listed above is a node here or is named in this paragraph, so a member added to the table and not to the drawing turns the suite red. It does not check the arrows; the paragraph above is what they draw, and an edit to one is an edit to both.
 
 A pin is an editorial line, moved on purpose. Which release each member is on is read from the pin, never from this file, so this file does not repeat versions.
 
 ## Re-syncing after a release
 
-In this order, one pull request each: design, then the three sites, then the three instances and meta-model, then service-conventions, then the engine, then the connector, then the MCP server, the chat server and the three deployments, then the Obsidian plugin, then field-notes, then the two `.github` repositories. Design first because a site's suite runs design's checks; the models before the engine because the sites' model pages are built from them; service-conventions before the engine and the connector because both vendor it; the connector after the engine because it is a client of the engine's API and its specification lives there; the MCP server after the models because it parses them, the chat server beside it because it is a client of the server's hosts and the same deployments pin both, the deployments after both because each pins a release of each, and the Obsidian plugin after the models for the server's reason, since it parses them with the same package. Nothing here opens those pull requests for you.
+The family resync moves the members that take a release, when the owner starts it: the README of robertblust/conventions says how, in its section on keeping the family in step, and the report the resync writes says which members move. The run computes the order from the pins, each member after what it takes, so this file keeps none.

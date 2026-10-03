@@ -47,6 +47,10 @@ test("the sheet carries each family's license once, ahead of the faces it covers
   }
   assert.equal(css.includes("\r"), false, "the texts' line endings are the sheet's");
   assert.equal(css.split("@font-face").length - 1, FACES.length);
+  // The row the family's pages open with, which keeps it on screen, comes from the package
+  // before the deployment's own rules, so those can still adjust it.
+  assert.ok(css.indexOf("/* header contract */") > css.indexOf("/* title contract */"), "the header contract follows the title");
+  assert.ok(css.indexOf("/* header contract */") < css.indexOf(".shell{}"), "and precedes the deployment's own sheet");
 });
 
 test("a design package without the license texts is refused, naming the first one missing", () => {
