@@ -572,3 +572,32 @@ test("the diagram rule sends the meta-model to the schema shape, never to the co
   assert.match(DIAGRAM_RULE, /shape schema/);
   assert.match(DIAGRAM_RULE, /not shape concepts/);
 });
+
+test("the check reads the text, every returned entity and the tool answer it came in, and its event comes before done", async () => {
+  const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  const model = fakeModel([toolTurn("get_entity", { id: rootId }, "Looking. "), textTurn(`${EXAMPLE_ROOT} is the company.`)]);
+  const { events, emit } = collect();
+  const seen = [];
+  const verdict = async (message) => { seen.push(message); return { event: { claims: [], threshold: null }, claims: 2, unsupported: 1 }; };
+  const r = await answer({ host, model, meter: meter(), verdict }, { messages: [{ role: "user", content: "what is it?" }], lang: "en" }, emit);
+  const kinds = events.map(([e]) => e);
+  assert.deepEqual(kinds.slice(-2), ["verdict", "done"]);
+  assert.ok(kinds.lastIndexOf("text") < kinds.indexOf("verdict"));
+  assert.equal(seen[0].text, `Looking. ${EXAMPLE_ROOT} is the company.`);
+  assert.equal(seen[0].returned[0].id, rootId, "the cited entity first, then what its answer named");
+  assert.ok(seen[0].evidence.get(rootId).includes(rootId), "the evidence is the tool answer the model was given");
+  assert.equal(seen[0].lang, "en");
+  assert.deepEqual([seen[0].calls, seen[0].empty], [1, 0]);
+  assert.equal(seen[0].answers.length, 1, "every tool answer of the message, for a claim naming none");
+  assert.deepEqual([r.claims, r.unsupported], [2, 1]);
+});
+
+test("with no check there is no verdict event and no counts, and a check that could not run sends nothing", async () => {
+  for (const verdict of [null, async () => null]) {
+    const { events, emit } = collect();
+    const r = await answer({ host, model: fakeModel([textTurn("Hello.")]), meter: meter(), verdict }, { messages: [{ role: "user", content: "hi" }], lang: "en" }, emit);
+    assert.ok(!events.some(([e]) => e === "verdict"));
+    assert.equal(events.at(-1)[0], "done");
+    assert.ok(!("claims" in r) && !("unsupported" in r));
+  }
+});
