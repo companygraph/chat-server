@@ -2,7 +2,7 @@
 
 > The chat answers any question and names the entity each claim rests on, but nothing checks that the entity says what the claim says. A claim can name the right entity and state the wrong date, or name an entity the tools never returned. This design has the service read its own answer back against the tool answers the model was given, claim by claim, before the stream ends, and tell the widget and the kept line which claims the evidence carries and which it does not.
 
-Status: draft. Written on 2026-09-26 against this repository at `8accf2e` (v0.12.2), whose files were read, for the owner to decide. It rests on one outside release, TypeSafe AI's Jev, published on Sep 15, 2026: a model that takes state and typed questions and returns typed answers with probabilities, trained so that those probabilities are calibrated, and which writes no text. Its wire format, its price and its latency are TypeSafe's published figures and were not measured here; §8 says what is measured before any number in this design is relied on.
+Status: draft. Written on 2026-09-26 against this repository at `8accf2e` (v0.12.2), whose files were read, for the owner to decide, and revised on 2026-10-03 against `dff5e07` (v0.22.0) with the owner's three decisions. It rests on one outside release, TypeSafe AI's Jev, published on Sep 15, 2026: a model that takes state and typed questions and returns typed answers with probabilities, trained so that those probabilities are calibrated, and which writes no text. Its wire format, its price and its latency are TypeSafe's published figures and were not measured here; §8 says what is measured before any number in this design is relied on.
 
 ---
 
@@ -48,7 +48,7 @@ The meter counts input-equivalent tokens of the chat's model and has no unit for
 
 ## 7. Configuration
 
-`chat.json` gains `verdict`, `false` by default, so a deployment that re-pins gains nothing it did not ask for. With `true`, the module mounts the project's Secret Manager secret `typesafe-key` into the service as the Anthropic key is mounted, and the owner makes that secret the way the README's steps make `chat-anthropic-key`. `CHAT_VERDICT_THRESHOLD` is the `p` above which the widget marks a claim, and has no default until §8 gives one: with it unset, verdicts are kept and sent with `p`, and the widget marks nothing.
+`chat.json` gains `verdict`, `false` by default, so a deployment that re-pins gains nothing it did not ask for. With `true`, the Google module mounts the project's Secret Manager secret `typesafe-key` into the service as the Anthropic key is mounted, and the owner makes that secret the way the README's steps make `chat-anthropic-key`. The Azure module holds no secret by design, since it reaches Anthropic by federation alone, so `verdict` is not offered on Azure in this slice; a later design gives it a way to reach TypeSafe there. `CHAT_VERDICT_THRESHOLD` is the `p` above which the widget marks a claim, and has no default until §8 gives one: with it unset, verdicts are kept and sent with `p`, and the widget marks nothing.
 
 ## 8. Tests and what is measured
 
@@ -58,10 +58,12 @@ The threshold and the German case are measured, not assumed, by a script run by 
 
 ## 9. Files
 
-A new `lib/verdict.mjs` for the claims, the evidence map and the call; `lib/loop.mjs` to keep the evidence and call the check before `done`; `lib/http.mjs` for the two fields of the kept line; `lib/config.mjs` for `verdict` and the threshold; `lib/report.mjs` for the counts; `deploy/terraform/run.tf` and `variables.tf` for the secret; `docs/INTERFACE.md` for the event and the two fields; `README.md` for the owner's step and the fence; the three test files and the measuring script under `scripts/`.
+A new `lib/verdict.mjs` for the claims, the evidence map and the call; `lib/loop.mjs` to keep the evidence and call the check before `done`; `lib/http.mjs` for the two fields of the kept line; `lib/config.mjs` for `verdict` and the threshold; `lib/report.mjs` for the counts; `deploy/google/terraform/run.tf` and `variables.tf` for the secret; `docs/INTERFACE.md` for the event and the two fields; `README.md` for the owner's step and the fence; the three test files and the measuring script under `scripts/`.
 
 ## 10. Release and order
 
 A minor release, since the interface gains an event and the kept line two fields and nothing is removed. In order: the measuring script runs against the fixtures in English and German, and its curve decides whether the widget marks at all; the privacy pages name TypeSafe and go live; one deployment sets `verdict` and runs a week with the threshold unset, its report read for the counts; then the threshold is set and the other deployments take it on re-pin.
 
-Three choices are left to the owner: whether the check runs at all given the new processor on the privacy pages; whether a German answer is checked before §8 has measured it; and whether the widget marks claims or the counts in the report are the whole use.
+The owner settled the three choices this design left open on 2026-10-03. The check runs, with TypeSafe named on the privacy pages before any deployment sets `verdict`: what reaches it is the chat's own sentences and the model's public text, never the question or the address. A German answer is checked before §8 has measured it, and its verdicts are kept and not shown, as §4 says, so the measurement has a week of real German answers beside the fixtures. And the widget marks claims only where §8's curve is near the diagonal; where it is not, the counts in the report are the whole use.
+
+The switch is the deployment's: `verdict` in `chat.json`, off by default, turns the check on and off for one site. A switch for the visitor is left out, since it would make the kept counts a sample of the visitors who chose it and would change nothing while the widget marks nothing. Once a threshold is set, one that shows or hides the marks, and never stops the check, is the widget's to design.
