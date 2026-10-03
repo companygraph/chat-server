@@ -65,7 +65,9 @@ variable "verdict_threshold" {
   type    = number
   default = null
   validation {
-    condition     = var.verdict_threshold == null || (var.verdict_threshold >= 0 && var.verdict_threshold <= 1)
+    # A conditional, since Terraform before 1.12 evaluates both sides of || and a null compared
+    # with a number fails the plan.
+    condition     = var.verdict_threshold == null ? true : var.verdict_threshold >= 0 && var.verdict_threshold <= 1
     error_message = "verdict_threshold is a probability between 0 and 1."
   }
 }
