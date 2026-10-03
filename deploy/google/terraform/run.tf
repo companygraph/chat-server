@@ -97,6 +97,34 @@ resource "google_cloud_run_v2_service" "chat" {
           }
         }
       }
+      # The answer check: its switch, TypeSafe's key from the project's secret, and the threshold
+      # where one is set. The secret is the owner's, as the Anthropic key's is.
+      dynamic "env" {
+        for_each = var.verdict ? [1] : []
+        content {
+          name  = "CHAT_VERDICT"
+          value = "true"
+        }
+      }
+      dynamic "env" {
+        for_each = var.verdict ? [1] : []
+        content {
+          name = "TYPESAFE_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = "typesafe-key"
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = var.verdict && var.verdict_threshold != null ? [1] : []
+        content {
+          name  = "CHAT_VERDICT_THRESHOLD"
+          value = tostring(var.verdict_threshold)
+        }
+      }
       dynamic "env" {
         for_each = local.federation_env
         content {

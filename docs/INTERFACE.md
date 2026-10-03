@@ -34,6 +34,7 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | `cite` | `{ id, title, type, url }`, `url` null where the host names no file | a tool answered with one entity, or evidence for one skill; the widget links it, and an entity cited already in this message is not cited twice |
 | `names` | `{ names: [{ id, title }] }` | every entity a list answer named, and every entity an entity answer references past the fifty edges it holds, read from the host; at most three hundred a message, each once and never one the answer also cites; the widget links these names where the text writes them |
 | `diagram` | `{ shape, title, mermaid, nodes: [{ node, id, title, type }], omitted }` | the host's `diagram` tool answered: Mermaid source the host built from the model's edges, for the widget to draw under the answer, each node named in `nodes` by the entity it is so the widget links it; the model reads what was drawn and never the source, and a message with two draws the last |
+| `verdict` | `{ claims: [{ from, to, ids, verdict, p }], threshold }` | where the deployment checks its answers, after the last `text` and before `done`: each claim of the answer, by its place in the concatenated text, the entities it names, its verdict — `supported`, `partial`, `contradicted`, `absent`, `says-nothing`, `withheld`, `unnamed` or `unsourced` — and the probability the judge gave it, null where no judge was asked; `threshold` is the probability above which the widget marks a claim whose verdict is not `supported` or `says-nothing`, null where it marks none, as it is in German until a German threshold is measured. A check that could not run sends no `verdict`, never an `error` |
 | `done` | `{ model, spent, dayLeft, cut }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not |
 | `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 
@@ -75,6 +76,8 @@ Every line the service writes is one JSON object that opens with a severity and 
 | `empty` | how many of those found nothing: refused by the host, an error, or a list with no rows |
 | `rounds` | how many requests the model answered; a request it did not, a rate refusal or a visitor gone, is not one |
 | `refused` | null where the model answered, else the code: `busy`, `over_day`, `over_month`, `closed`, `host_down` or `internal` |
+| `claims` | where the answer was checked, how many claims it made; absent where it was not |
+| `unsupported` | where the answer was checked, how many of its claims are `partial`, `contradicted`, `absent`, `withheld`, `unnamed` or `unsourced`; absent where it was not |
 
 Whether a question was answered is not a field: it is read as `refused` null and either `cited` non-empty or `calls` above `empty`, since a list answer cites nothing though the model had every row, and the rule can change with the lines intact.
 

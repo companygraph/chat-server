@@ -41,7 +41,9 @@ export function federationProblems(c, platform = "google") {
   return problems;
 }
 
-const GOOGLE_ONLY = ["site_id", "run_host"];
+// The answer check runs on Google alone in this release: the Azure module holds no secret by
+// design, so TypeSafe's key has nowhere to come from there.
+const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold"];
 const AZURE_ONLY = ["storage_account", "app_host", "dns_ready", "questions_workspace_id", "analyst_client_id"];
 
 // chat.json as its platform needs it: the fields every chat names, the platform's own, and none of
@@ -53,6 +55,8 @@ export function chatProblems(c, platform) {
     if (!("site_id" in c)) problems.push("chat.json has no site_id, the Hosting site Google serves the chat from");
     for (const k of AZURE_ONLY) if (k in c) problems.push(`${k} is for a chat on Azure`);
     if ("provider" in c && !["vertex", "anthropic"].includes(c.provider)) problems.push("provider is vertex or anthropic");
+    if ("verdict" in c && typeof c.verdict !== "boolean") problems.push("verdict is true or false");
+    if ("verdict_threshold" in c && !(typeof c.verdict_threshold === "number" && c.verdict_threshold >= 0 && c.verdict_threshold <= 1)) problems.push("verdict_threshold is a probability between 0 and 1");
   } else {
     for (const k of GOOGLE_ONLY) if (k in c) problems.push(`${k} is for a chat on Google`);
     if (!/^[a-z0-9]{3,24}$/.test(c.storage_account ?? "")) problems.push("storage_account is 3 to 24 lowercase letters and digits");
