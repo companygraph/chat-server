@@ -149,3 +149,12 @@ test("the answer check is off unless turned on, needs TypeSafe's key when on, an
   assert.throws(() => configFromEnv({ ...full, CHAT_VERDICT: "yes" }), /CHAT_VERDICT is true or false: yes/);
   assert.throws(() => configFromEnv({ ...full, CHAT_VERDICT_THRESHOLD: "80" }), /CHAT_VERDICT_THRESHOLD is a probability between 0 and 1: 80/);
 });
+
+test("the inference region is the Anthropic API's own, global or us, and unset sends none", () => {
+  const anthropic = { ...full, ANTHROPIC_API_KEY: "sk-ant-test" };
+  assert.equal(configFromEnv(anthropic).inferenceGeo, null);
+  assert.equal(configFromEnv({ ...anthropic, CHAT_INFERENCE_GEO: " us " }).inferenceGeo, "us");
+  assert.equal(configFromEnv({ ...anthropic, CHAT_INFERENCE_GEO: "global" }).inferenceGeo, "global");
+  assert.throws(() => configFromEnv({ ...anthropic, CHAT_INFERENCE_GEO: "eu" }), /^Error: CHAT_INFERENCE_GEO is not one of global us: eu$/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_INFERENCE_GEO: "us" }), /^Error: CHAT_INFERENCE_GEO is for the Anthropic API; on Vertex the region is CHAT_REGION$/);
+});

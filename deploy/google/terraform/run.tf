@@ -97,6 +97,13 @@ resource "google_cloud_run_v2_service" "chat" {
           }
         }
       }
+      dynamic "env" {
+        for_each = var.inference_geo == null ? [] : [var.inference_geo]
+        content {
+          name  = "CHAT_INFERENCE_GEO"
+          value = env.value
+        }
+      }
       # The answer check: its switch, TypeSafe's key from the project's secret, and the threshold
       # where one is set. The secret is the owner's, as the Anthropic key's is.
       dynamic "env" {

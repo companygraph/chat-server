@@ -77,3 +77,15 @@ test("the answer check is a Google chat's switch, true or false, with a threshol
   const azure = { domain: "chat.example.test", mcp_url: "https://mcp.example.test/mcp", origins: ["https://example.test"], month_tokens: 1, storage_account: "chatexample", provider: "anthropic", anthropic_federation: { rule_id: "fdrl_01AbC", organization_id: "00000000-0000-4000-8000-000000000000", service_account_id: "svac_01AbC", audience: "00000000-0000-4000-8000-000000000001" } };
   assert.deepEqual(chatProblems({ ...azure, verdict: true }, "azure"), ["verdict is for a chat on Google"]);
 });
+
+test("the inference region is global or us, on either platform, and only for the Anthropic API", () => {
+  const google = { domain: "chat.example.test", mcp_url: "https://mcp.example.test/mcp", origins: ["https://example.test"], month_tokens: 1, site_id: "chat-example", provider: "anthropic" };
+  assert.deepEqual(chatProblems({ ...google, inference_geo: "us" }, "google"), []);
+  assert.deepEqual(chatProblems({ ...google, inference_geo: "eu" }, "google"), ["inference_geo is global or us"]);
+  assert.deepEqual(chatProblems({ ...google, provider: "vertex", inference_geo: "us" }, "google"), ["inference_geo is for provider anthropic; on Vertex the region is the deployment's"]);
+  const { provider, ...noProvider } = google;
+  assert.deepEqual(chatProblems({ ...noProvider, inference_geo: "us" }, "google"), ["inference_geo is for provider anthropic; on Vertex the region is the deployment's"]);
+  const azure = { domain: "chat.example.test", mcp_url: "https://mcp.example.test/mcp", origins: ["https://example.test"], month_tokens: 1, storage_account: "chatexample", provider: "anthropic", anthropic_federation: { rule_id: "fdrl_01AbC", organization_id: "00000000-0000-4000-8000-000000000000", service_account_id: "svac_01AbC", audience: "00000000-0000-4000-8000-000000000001" } };
+  assert.deepEqual(chatProblems({ ...azure, inference_geo: "us" }, "azure"), []);
+  assert.deepEqual(chatProblems({ ...azure, inference_geo: "US" }, "azure"), ["inference_geo is global or us"]);
+});

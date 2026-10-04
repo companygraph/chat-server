@@ -53,6 +53,21 @@ variable "anthropic_federation" {
   }
 }
 
+# Where the Anthropic API runs a request: `global`, any geography it chooses, or `us`, the
+# United States only. Unset, requests name none and the Console workspace's default decides.
+variable "inference_geo" {
+  type    = string
+  default = null
+  validation {
+    condition     = var.inference_geo == null ? true : contains(["global", "us"], var.inference_geo)
+    error_message = "inference_geo is global or us."
+  }
+  validation {
+    condition     = var.inference_geo == null || var.model_provider == "anthropic"
+    error_message = "inference_geo is for model_provider anthropic; on Vertex the region is the deployment's."
+  }
+}
+
 # The answer check (docs/INTERFACE.md, the verdict event). Off by default, so a deployment that
 # re-pins gains nothing it did not ask for. On, the module mounts the project's Secret Manager
 # secret `typesafe-key`, which the owner makes as the README says, and passes the threshold the
