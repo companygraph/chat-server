@@ -658,3 +658,27 @@ test("a context picture's relations name upstream and downstream and say it, and
   assert.deepEqual(process.relations[0], { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "U → D · conformist" });
   assert.equal(process.map, undefined);
 });
+
+test("an aggregate picture's relations are sentences, with no cardinality symbol, and only an aggregate carries the key", () => {
+  const nodes = ["Run", "Check", "Finding", "Vocabulary", "Pin", "Event", "Note"].map((title, i) => ({ node: `n${i}`, id: title, title, type: "member" }));
+  const labels = [["n1", "1..*"], ["n2", "*"], ["n3", "1"], ["n4", "0..1"], ["n6", ""], ["n5", "emits"]];
+  const links = [...labels.map(([to, label]) => ({ from: "n0", to, label })), { from: "n1", to: "n2", label: "one" }];
+  const note = JSON.parse(diagramNote({ shape: "aggregate", nodes, links }));
+  assert.deepEqual(note.relations, [
+    { holder: "Run", held: "Check", says: "Run holds one or more Check" },
+    { holder: "Run", held: "Finding", says: "Run holds any number of Finding" },
+    { holder: "Run", held: "Vocabulary", says: "Run holds exactly one Vocabulary" },
+    { holder: "Run", held: "Pin", says: "Run holds at most one Pin" },
+    { holder: "Run", held: "Note", says: "Run holds Note" },
+    { emitter: "Run", event: "Event", says: "Run emits Event" },
+    { from: "Check", fromType: "member", to: "Finding", toType: "member", label: "one" },
+  ]);
+  assert.match(note.aggregate, /Each relation's says states it as the picture draws it/);
+  assert.match(note.aggregate, /never write a cardinality as 1\.\.\* or \* or any other symbol/);
+  assert.doesNotMatch(JSON.stringify(note.relations), /1\.\.\*|"\*"/);
+  for (const shape of ["context", "process"]) {
+    const other = JSON.parse(diagramNote({ shape, nodes, links }));
+    assert.equal("aggregate" in other, false, shape);
+    assert.equal(other.relations[0].label, "1..*", shape);
+  }
+});
