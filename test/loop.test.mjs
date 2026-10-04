@@ -457,6 +457,9 @@ test("two diagrams in one message are two events, in the order they were drawn",
   const { events, emit } = collect();
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me" }], lang: "en" }, emit);
   assert.deepEqual(events.filter(([e]) => e === "diagram").map(([, d]) => d.shape), ["process", "neighborhood"]);
+  const notes = model.requests.at(-1).messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).filter((c) => c.type === "tool_result").map((c) => typeof c.content === "string" ? c.content : JSON.stringify(c.content));
+  assert.ok(notes.length >= 2 && notes.every((n) => !/the last one if you drew several/.test(n)), "the model is no longer told only the last picture shows");
+  assert.ok(notes.some((n) => /every diagram you draw is shown/.test(n)));
 });
 
 test("a phase already cited is not named again when the process is drawn", async () => {
