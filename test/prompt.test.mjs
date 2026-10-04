@@ -201,7 +201,7 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /bounded context/);
   assert.match(DIAGRAM_RULE, /shape concepts, process, neighborhood, context, aggregate, flow or lifecycle/);
   assert.match(DIAGRAM_RULE, /a bounded context, or the diagrams of one, is shown shape context, then aggregate, then flow, then lifecycle, all with the context's id/);
-  assert.match(DIAGRAM_RULE, /holds no aggregate/);
+  assert.match(DIAGRAM_RULE, /the map stands alone and the answer says only that the context holds no aggregate; otherwise, where flow or lifecycle refuses as empty,/);
   assert.match(DIAGRAM_RULE, /where flow or lifecycle refuses as empty, the answer says in one sentence that the model does not describe that flow or lifecycle yet/);
   assert.match(DIAGRAM_RULE, /asks for the sequence or the lifecycle of a context or an aggregate is shown that shape alone, flow for the sequence/);
   assert.match(DIAGRAM_RULE, /Where diagram refuses for any other reason, answer in words and a table/);

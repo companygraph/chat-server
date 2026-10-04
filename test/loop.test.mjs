@@ -696,7 +696,11 @@ test("a flow picture's relations say what each aggregate emits on which command,
     { emitter: "Account", event: "Approved", command: "Review", when: "the check passes", says: "Account emits Approved on Review when the check passes" },
     { emitter: "Account", event: "Refused", command: "Review", when: "the check fails", says: "Account emits Refused on Review when the check fails" },
   ]);
-  assert.equal(note.flow, "Each relation's says states it as the picture draws it. State each relation as its says states it, in the answer's language, in words.");
+  assert.match(note.flow, /^Each relation's says states it as the picture draws it\. State each relation as its says states it, in the answer's language, in words\. /);
+  assert.match(note.flow, /relations lists only the events a command emits; the picture also draws, as a message from Caller, every command the aggregate handles, including those that emit nothing, so never say the flow draws no relation or shows the aggregate alone\.$/);
+  const silent = JSON.parse(diagramNote({ shape: "flow", nodes: nodes.slice(0, 1), links: [] }));
+  assert.deepEqual(silent.relations, [], "a flow whose commands emit nothing has no relation");
+  assert.match(silent.flow, /never say the flow draws no relation/, "and is still told the picture draws its commands");
   assert.equal("lifecycle" in note, false);
   const aggregate = JSON.parse(diagramNote({ shape: "aggregate", nodes, links }));
   assert.equal("flow" in aggregate, false, "only a flow carries the key");
