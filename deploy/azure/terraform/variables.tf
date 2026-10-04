@@ -43,6 +43,16 @@ variable "anthropic_federation" {
 }
 # The repository whose runs on main write the weekly report, by the ids GitHub's immutable
 # subject carries, as the bootstrap names them.
+# Where the Anthropic API runs a request: `global`, any geography it chooses, or `us`, the
+# United States only. Unset, requests name none and the Console workspace's default decides.
+variable "inference_geo" {
+  type    = string
+  default = null
+  validation {
+    condition     = var.inference_geo == null ? true : contains(["global", "us"], var.inference_geo)
+    error_message = "inference_geo is global or us."
+  }
+}
 variable "repository" { type = string }
 variable "repository_id" { type = string }
 variable "owner_id" { type = string }

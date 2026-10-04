@@ -93,5 +93,10 @@ export function chatProblems(c, platform) {
     if (c.provider !== "anthropic") problems.push("a chat on Azure has provider anthropic");
     if (!("anthropic_federation" in c)) problems.push("a chat on Azure names anthropic_federation");
   }
+  // The region is the Anthropic API's on either platform, and Vertex takes its own from the endpoint.
+  if ("inference_geo" in c) {
+    if (!["global", "us"].includes(c.inference_geo)) problems.push("inference_geo is global or us");
+    else if (c.provider !== "anthropic") problems.push("inference_geo is for provider anthropic; on Vertex the region is the deployment's");
+  }
   return [...problems, ...federationProblems(c, platform)];
 }

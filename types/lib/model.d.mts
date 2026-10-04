@@ -74,9 +74,12 @@ export declare const credentialFault: (err: unknown) => (Error & {
     statusCode?: number;
 }) | null;
 /**
- * @param {{ apiKey?: string | undefined; federation?: Federation; identityToken?: ((fetchFn: typeof globalThis.fetch, options: { timeoutMs: number }) => () => Promise<string>) | undefined; fetch?: typeof globalThis.fetch; tokenTimeoutMs?: number }} options
+// A region, where one is given, rides on every request as `inference_geo`; none given, the
+// request names none and the Console workspace's default decides.
+/**
+ * @param {{ apiKey?: string | undefined; federation?: Federation; identityToken?: ((fetchFn: typeof globalThis.fetch, options: { timeoutMs: number }) => () => Promise<string>) | undefined; fetch?: typeof globalThis.fetch; tokenTimeoutMs?: number; inferenceGeo?: "global" | "us" | null }} options
  */
-export declare const anthropicModel: ({ apiKey, federation, identityToken, fetch: fetchFn, tokenTimeoutMs }: {
+export declare const anthropicModel: ({ apiKey, federation, identityToken, fetch: fetchFn, tokenTimeoutMs, inferenceGeo }: {
     apiKey?: string | undefined;
     federation?: Federation;
     identityToken?: ((fetchFn: typeof globalThis.fetch, options: {
@@ -84,13 +87,15 @@ export declare const anthropicModel: ({ apiKey, federation, identityToken, fetch
     }) => () => Promise<string>) | undefined;
     fetch?: typeof globalThis.fetch;
     tokenTimeoutMs?: number;
+    inferenceGeo?: "global" | "us" | null;
 }) => Model;
 /**
  * @param {Config} config
- * @param {{ identityToken?: ((fetchFn: typeof globalThis.fetch, options: { timeoutMs: number }) => () => Promise<string>) | undefined }} [options]
+ * @param {{ identityToken?: ((fetchFn: typeof globalThis.fetch, options: { timeoutMs: number }) => () => Promise<string>) | undefined; fetch?: typeof globalThis.fetch }} [options]
  */
-export declare const modelFor: (config: Config, { identityToken }?: {
+export declare const modelFor: (config: Config, { identityToken, fetch }?: {
     identityToken?: ((fetchFn: typeof globalThis.fetch, options: {
         timeoutMs: number;
     }) => () => Promise<string>) | undefined;
+    fetch?: typeof globalThis.fetch;
 }) => Model;

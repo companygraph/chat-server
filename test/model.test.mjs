@@ -211,3 +211,20 @@ test("a Vertex client that failed to load is built again on the next turn", asyn
   await m.turn({}, () => {});
   assert.equal(builds, 2);
 });
+
+test("a region given to the Anthropic model rides on every request, and none rides when none is given", async () => {
+  const sent = async (inferenceGeo) => {
+    const { fetch, seen } = fakeFetch();
+    await assert.rejects(ask(anthropicModel({ federation, identityToken: googleIdentityToken, fetch, inferenceGeo })), (e) => e.code === "busy");
+    return JSON.parse(seen.find((s) => s.url.endsWith("/v1/messages")).body);
+  };
+  assert.equal((await sent("us")).inference_geo, "us");
+  assert.equal("inference_geo" in (await sent(null)), false);
+});
+
+test("the chooser hands the config's region to the Anthropic model", async () => {
+  const { fetch, seen } = fakeFetch();
+  const m = modelFor({ project: null, region: null, anthropicKey: null, anthropicFederation: federation, inferenceGeo: "us" }, { identityToken: googleIdentityToken, fetch });
+  await assert.rejects(ask(m), (e) => e.code === "busy");
+  assert.equal(JSON.parse(seen.find((s) => s.url.endsWith("/v1/messages")).body).inference_geo, "us");
+});

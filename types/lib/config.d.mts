@@ -23,6 +23,7 @@ export type Config = {
     verdict: boolean;
     typesafeKey: string | null;
     verdictThreshold: number | null;
+    inferenceGeo: "global" | "us" | null;
     provider: "anthropic" | "vertex";
     credential: "key" | "federation" | "google";
     meterOptions: Record<string, string>;

@@ -46,7 +46,7 @@ locals {
       ANTHROPIC_WORKSPACE_ID       = var.anthropic_federation.workspace_id
     } : k => v if v != null
   }
-  env = merge(local.federation_env, {
+  env = merge(local.federation_env, { for k, v in { CHAT_INFERENCE_GEO = var.inference_geo } : k => v if v != null }, {
     CHAT_MCP_URL           = var.mcp_url
     CHAT_ORIGINS           = join(",", var.origins)
     CHAT_HOSTS             = join(",", compact([var.domain, local.app_host]))
