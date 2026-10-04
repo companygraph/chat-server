@@ -2,14 +2,27 @@
 // `chat/` folder, which holds chat.json, the Dockerfile, brand.html and own.css.
 import fs from "node:fs";
 import path from "node:path";
+
+/**
+ * chat.json and deployment.json are the deployment's own files, read as they are and checked
+ * below by form, so a value is read where it is used.
+ * @typedef {Record<string, any>} DeploymentFile
+ */
+/**
+ * @typedef {"google" | "azure"} Platform
+ */
+
 export const ROOT = process.cwd();
 export const DIST = path.join(ROOT, "dist");
+/** @returns {DeploymentFile} */
 export const chat = () => JSON.parse(fs.readFileSync(path.join(ROOT, "chat.json"), "utf8"));
 // The project's values, one directory up: a deployment's chat/ sits beside its deployment.json.
+/** @returns {DeploymentFile} */
 export const deployment = () => JSON.parse(fs.readFileSync(path.join(ROOT, "..", "deployment.json"), "utf8"));
 
 // chat.json's federation, checked by form: Terraform drops a key its object type does not name
 // and says nothing, so a misspelt field would deploy as a missing one.
+/** @type {Record<string, [RegExp, string]>} */
 const FEDERATION_FIELDS = {
   rule_id: [/^fdrl_\w+$/, "rule_id is an fdrl_ id"],
   organization_id: [/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, "organization_id is the organization's UUID"],
@@ -17,17 +30,26 @@ const FEDERATION_FIELDS = {
 };
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-export const PLATFORMS = ["google", "azure"];
+export const PLATFORMS = /** @type {const} */ (["google", "azure"]);
 
 // A deployment that names no platform is on Google, as every deployment before the field was.
+/**
+ * @param {DeploymentFile} d
+ * @returns {Platform}
+ */
 export function platformOf(d) {
   const p = d.platform ?? "google";
-  if (!PLATFORMS.includes(p)) throw new Error(`deployment.json names platform ${p}, which is not one of ${PLATFORMS.join(" ")}`);
-  return p;
+  if (!PLATFORMS.includes(/** @type {Platform} */ (p))) throw new Error(`deployment.json names platform ${p}, which is not one of ${PLATFORMS.join(" ")}`);
+  return /** @type {Platform} */ (p);
 }
 
 // On Azure the federation also names the audience its token is asked for: the client id of the
 // tenant's app registration standing for the Claude API. Google's token names its own audience.
+/**
+ * @param {DeploymentFile} c
+ * @param {Platform} [platform]
+ * @returns {string[]}
+ */
 export function federationProblems(c, platform = "google") {
   if (!("anthropic_federation" in c)) return [];
   const f = c.anthropic_federation;
@@ -48,6 +70,11 @@ const AZURE_ONLY = ["storage_account", "app_host", "dns_ready", "questions_works
 
 // chat.json as its platform needs it: the fields every chat names, the platform's own, and none of
 // the other platform's, since a field Terraform does not read would deploy as a missing one.
+/**
+ * @param {DeploymentFile} c
+ * @param {Platform} platform
+ * @returns {string[]}
+ */
 export function chatProblems(c, platform) {
   const problems = [];
   for (const k of ["domain", "mcp_url", "origins", "month_tokens"]) if (!(k in c)) problems.push(`chat.json has no ${k}`);

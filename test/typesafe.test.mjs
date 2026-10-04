@@ -35,3 +35,10 @@ test("the caller's signal reaches the request, so an overrun is cancelled", asyn
   await typesafeJudge({ key: "k", fetch: async (url, init) => { got = init.signal; return reply(200, { answers: { c1: { type: "choice", choice: "absent" } } }); } })(request, { signal: ac.signal });
   assert.equal(got, ac.signal);
 });
+
+test("probabilities that are not numbers are dropped, so a malformed answer cannot pass for a measured one", async () => {
+  const answer = (probabilities) => typesafeJudge({ key: "k", fetch: async () => reply(200, { answers: { c1: { type: "choice", choice: "supported", probabilities } } }) })(request);
+  assert.deepEqual(await answer({ supported: 0.9, absent: "0.1", extra: null }), { c1: { pick: "supported", probabilities: { supported: 0.9 } } });
+  assert.deepEqual(await answer("0.9"), { c1: { pick: "supported", probabilities: {} } });
+  assert.deepEqual(await answer([0.9]), { c1: { pick: "supported", probabilities: {} } });
+});

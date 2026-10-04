@@ -15,6 +15,6 @@ try {
     default: console.error(USAGE); process.exit(2);
   }
 } catch (err) {
-  console.error(err.message);
+  console.error((/** @type {Error} */ (err)).message);
   process.exit(2);
 }

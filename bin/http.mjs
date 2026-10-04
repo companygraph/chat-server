@@ -18,8 +18,10 @@ import { createHttpServer } from "../lib/http.mjs";
 import { verdictCheck } from "../lib/verdict.mjs";
 import { typesafeJudge } from "../lib/typesafe.mjs";
 
+/** @type {Record<string, string | undefined>} */
 const ICON_TYPES = { ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
 
+/** @type {import("../lib/model.mjs").Model} */
 const fakeModel = {
   name: "fake",
   provider: "fake",
@@ -27,7 +29,7 @@ const fakeModel = {
   async turn(request, onText) {
     const text = "This is a local run without a model; the host answered the handshake and nothing was asked of it.";
     onText(text);
-    return { content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } };
+    return /** @type {import("@anthropic-ai/sdk").default.Message} */ (/** @type {unknown} */ ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } }));
   },
 };
 
@@ -47,7 +49,7 @@ try {
   const host = await connectHost(config.mcpUrl, { questionCap: config.questionIndexChars });
   // The model calls a source as (fetch, { timeoutMs }); the platform's own values ride along.
   const source = values.model !== "fake" && config.anthropicFederation ? await identityTokenSource(config.identity) : undefined;
-  const identityToken = source && ((fetchFn, options) => source(fetchFn, { ...options, ...config.identityOptions }));
+  const identityToken = source && ((/** @type {typeof globalThis.fetch} */ fetchFn, /** @type {{ timeoutMs?: number }} */ options) => source(fetchFn, { ...options, ...config.identityOptions }));
   const model = values.model === "fake" ? fakeModel : modelFor(config, { identityToken });
   const store = await meterStore(config.meter, config.meterOptions);
   const meter = new Meter(store, { monthTokens: config.monthTokens });
@@ -55,16 +57,17 @@ try {
   // The answer check, where the deployment turned it on; the title index is read as the service
   // comes up, so the first answer does not wait on it.
   // A check that could not run is one warning line with its reason, never the answer or the key.
+  /** @param {{ reason: string }} fields */
   const warn = (fields) => console.log(line("chat.verdict", "WARNING", { kind: "verdict", ...fields }));
   const verdict = config.verdict
-    ? verdictCheck({ judge: typesafeJudge({ key: config.typesafeKey }), titles: () => host.titles(), promptTitles: async () => (await host.questions()).titles, threshold: config.verdictThreshold, warn })
+    ? verdictCheck({ judge: typesafeJudge({ key: /** @type {string} */ (config.typesafeKey) }), titles: () => host.titles(), promptTitles: async () => (await host.questions()).titles, threshold: config.verdictThreshold, warn })
     : null;
   if (verdict) host.refreshTitles().catch(() => {});
-  createHttpServer({ config, host, model, meter, bucket, verdict }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", function () {
-    const port = this.address().port, commit = host.provenance?.commit ?? null;
+  createHttpServer({ config, host, model, meter, bucket, verdict }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", /** @this {import("node:http").Server} */ function () {
+    const port = (/** @type {import("node:net").AddressInfo} */ (this.address())).port, commit = host.provenance?.commit ?? null;
     console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict }));
   });
 } catch (err) {
-  console.error(err.message);
+  console.error((/** @type {Error} */ (err)).message);
   process.exit(2);
 }
