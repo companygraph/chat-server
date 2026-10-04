@@ -9,6 +9,12 @@ export type Cite = {
     type: string | null;
     url: string | null;
 };
+export type Transition = {
+    aggregate: string;
+    from: string | null;
+    to: string;
+    command: string | null;
+};
 export type Diagram = {
     shape: string;
     title: string | null;
@@ -31,6 +37,7 @@ export type Diagram = {
         multiplicity: string;
     }[];
     core?: string | null;
+    transitions?: Transition[];
     edges?: number;
 };
 export declare const NAME_CAP = 300;
