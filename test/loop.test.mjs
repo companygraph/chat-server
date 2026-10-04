@@ -629,13 +629,22 @@ test("a visitor who leaves while the check runs gets nothing more, not even done
   assert.ok(!("claims" in r));
 });
 
-test("a context picture's relations name upstream and downstream, and a process picture's keep from and to", () => {
-  const nodes = [{ node: "n0", id: "a", title: "A", type: "bounded-context" }, { node: "n1", id: "b", title: "B", type: "bounded-context" }];
-  const links = [{ from: "n0", to: "n1", label: "U → D · conformist" }, { from: "n1", to: "n0", label: "shared kernel" }];
+test("a context picture's relations name upstream and downstream and say it, and a process picture's keep from and to", () => {
+  const nodes = ["A", "B", "C"].map((title, i) => ({ node: `n${i}`, id: title, title, type: "bounded-context" }));
+  const links = [
+    { from: "n0", to: "n1", label: "U → D · conformist" },
+    { from: "n0", to: "n2", label: "U → D · customer/supplier" },
+    { from: "n1", to: "n0", label: "shared kernel" },
+    { from: "n2", to: "n1", label: "partnership" },
+  ];
   const context = JSON.parse(diagramNote({ shape: "context", nodes, links }));
-  assert.deepEqual(context.relations, [{ upstream: "A", downstream: "B", pattern: "conformist" }, { between: ["B", "A"], pattern: "shared kernel" }]);
-  assert.match(context.map, /the downstream context conforms to the upstream one/);
-  assert.match(context.map, /is symmetric/);
+  assert.deepEqual(context.relations, [
+    { upstream: "A", downstream: "B", pattern: "conformist", says: "B conforms to A, its upstream" },
+    { upstream: "A", downstream: "C", pattern: "customer/supplier", says: "C is downstream of A and takes the customer/supplier pattern toward it" },
+    { between: ["B", "A"], pattern: "shared kernel", says: "B and A share a kernel" },
+    { between: ["C", "B"], pattern: "partnership", says: "C and B share the partnership pattern, with neither upstream" },
+  ]);
+  assert.match(context.map, /never turn a relation around/);
   const process = JSON.parse(diagramNote({ shape: "process", nodes, links }));
   assert.deepEqual(process.relations[0], { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "U → D · conformist" });
   assert.equal(process.map, undefined);
