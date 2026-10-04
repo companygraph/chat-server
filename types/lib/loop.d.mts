@@ -10,16 +10,16 @@ export type Cite = {
     url: string | null;
 };
 export type Diagram = {
-    shape: string;
-    title: string | null;
+    shape: unknown;
+    title: unknown;
     mermaid: string;
     nodes: {
         node: string;
         id: string;
         title: string;
-        type?: string;
+        type?: unknown;
     }[];
-    omitted: number;
+    omitted: unknown;
     links: {
         from: string;
         to: string;
@@ -31,7 +31,7 @@ export type Diagram = {
         multiplicity: string;
     }[];
     core?: string | null;
-    edges?: number;
+    edges?: unknown;
 };
 export declare const NAME_CAP = 300;
 /**
