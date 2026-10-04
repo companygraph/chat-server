@@ -628,3 +628,12 @@ test("a visitor who leaves while the check runs gets nothing more, not even done
   assert.deepEqual(events.map(([e]) => e), ["text"]);
   assert.ok(!("claims" in r));
 });
+
+test("a context picture's note says which side is upstream, and a process picture's does not", () => {
+  const nodes = [{ node: "n0", id: "a", title: "A", type: "bounded-context" }, { node: "n1", id: "b", title: "B", type: "bounded-context" }];
+  const links = [{ from: "n0", to: "n1", label: "U → D · conformist" }];
+  const context = JSON.parse(diagramNote({ shape: "context", nodes, links }));
+  assert.match(context.map, /the to side, takes that pattern/);
+  assert.match(context.map, /is symmetric/);
+  assert.equal(JSON.parse(diagramNote({ shape: "process", nodes, links })).map, undefined);
+});
