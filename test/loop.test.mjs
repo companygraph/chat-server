@@ -682,3 +682,65 @@ test("an aggregate picture's relations are sentences, with no cardinality symbol
     assert.equal(other.relations[0].label, "1..*", shape);
   }
 });
+
+test("a flow picture's relations say what each aggregate emits on which command, and when where the label has a When", () => {
+  const nodes = [["Account", "aggregate"], ["Opened", "domain-event"], ["Approved", "domain-event"], ["Refused", "domain-event"]].map(([title, type], i) => ({ node: `n${i}`, id: title, title, type }));
+  const links = [
+    { from: "n0", to: "n1", label: "Open" },
+    { from: "n0", to: "n2", label: "Review · the check passes" },
+    { from: "n0", to: "n3", label: "Review · the check fails" },
+  ];
+  const note = JSON.parse(diagramNote({ shape: "flow", nodes, links }));
+  assert.deepEqual(note.relations, [
+    { emitter: "Account", event: "Opened", command: "Open", when: null, says: "Account emits Opened on Open" },
+    { emitter: "Account", event: "Approved", command: "Review", when: "the check passes", says: "Account emits Approved on Review when the check passes" },
+    { emitter: "Account", event: "Refused", command: "Review", when: "the check fails", says: "Account emits Refused on Review when the check fails" },
+  ]);
+  assert.equal(note.flow, "Each relation's says states it as the picture draws it. State each relation as its says states it, in the answer's language, in words.");
+  assert.equal("lifecycle" in note, false);
+  const aggregate = JSON.parse(diagramNote({ shape: "aggregate", nodes, links }));
+  assert.equal("flow" in aggregate, false, "only a flow carries the key");
+  assert.equal(aggregate.relations[0].label, "Open", "and only a flow words its labels so");
+});
+
+test("a lifecycle picture's relations are its transitions, each said as a start or a move, with its command where it has one", () => {
+  const nodes = [{ node: "n0", id: "a1", title: "Account", type: "aggregate" }];
+  const transitions = [
+    { aggregate: "Account", from: null, to: "Open", command: "Open" },
+    { aggregate: "Account", from: "Open", to: "Frozen", command: "Freeze" },
+    { aggregate: "Account", from: "Frozen", to: "Closed", command: null },
+    { aggregate: "Account", from: null, to: "Draft", command: null },
+  ];
+  const note = JSON.parse(diagramNote({ shape: "lifecycle", nodes, links: [], transitions, edges: 4 }));
+  assert.deepEqual(note.relations, [
+    { aggregate: "Account", from: null, to: "Open", command: "Open", says: "Account starts in Open on Open" },
+    { aggregate: "Account", from: "Open", to: "Frozen", command: "Freeze", says: "Account moves from Open to Frozen on Freeze" },
+    { aggregate: "Account", from: "Frozen", to: "Closed", command: null, says: "Account moves from Frozen to Closed" },
+    { aggregate: "Account", from: null, to: "Draft", command: null, says: "Account starts in Draft" },
+  ]);
+  assert.equal(note.lifecycle, "Each relation's says states it as the picture draws it. State each relation as its says states it, in the answer's language, in words.");
+  assert.equal("flow" in note, false);
+  const many = Array.from({ length: 65 }, (_, i) => ({ aggregate: "Account", from: `s${i}`, to: `s${i + 1}`, command: null }));
+  const capped = JSON.parse(diagramNote({ shape: "lifecycle", nodes, links: [], transitions: many }));
+  assert.equal(capped.relations.length, 60);
+  assert.equal(capped.relationsOmitted, 5);
+});
+
+test("diagramOf keeps a lifecycle's transitions for the note, drops a malformed one, and the diagram event carries none", async () => {
+  const nodes = [{ node: "n0", id: "a1", title: "Account", type: "aggregate" }];
+  const transitions = [{ aggregate: "Account", from: null, to: "Open", command: "Open" }, { aggregate: "Account", to: 3 }, null, { aggregate: "Account", from: "Open", to: "Closed", command: 7 }];
+  const data = { shape: "lifecycle", title: "Account", mermaid: "stateDiagram-v2", nodes, links: [], transitions, edges: 1, omitted: 0 };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture?.transitions, [{ aggregate: "Account", from: null, to: "Open", command: "Open" }]);
+  assert.equal("transitions" in /** @type {object} */ (diagramOf("diagram", { isError: false, data: { ...data, shape: "flow" } })), false, "only a lifecycle carries them");
+  const drawing = { ...host, call: async (name, args) => (name === "diagram" ? { text: JSON.stringify(data), isError: false, data } : host.call(name, args)) };
+  const model = fakeModel([toolTurn("diagram", { shape: "lifecycle", id: "a1" }), textTurn("Account starts in Open.")]);
+  const { events, emit } = collect();
+  await answer({ host: drawing, model, meter: meter() }, { messages: [{ role: "user", content: "show the lifecycle" }], lang: "en" }, emit);
+  const drawn = events.filter(([e]) => e === "diagram").map(([, d]) => d);
+  assert.equal(drawn.length, 1);
+  assert.equal("transitions" in drawn[0], false, "the event strips transitions as it strips links");
+  assert.equal("links" in drawn[0], false);
+  const given = JSON.parse(model.requests[1].messages.at(-1).content[0].content);
+  assert.equal(given.relations[0].says, "Account starts in Open on Open", "and the note reads them");
+});
