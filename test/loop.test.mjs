@@ -457,6 +457,9 @@ test("two diagrams in one message are two events, in the order they were drawn",
   const { events, emit } = collect();
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "show me" }], lang: "en" }, emit);
   assert.deepEqual(events.filter(([e]) => e === "diagram").map(([, d]) => d.shape), ["process", "neighborhood"]);
+  const notes = model.requests.at(-1).messages.flatMap((m) => Array.isArray(m.content) ? m.content : []).filter((c) => c.type === "tool_result").map((c) => typeof c.content === "string" ? c.content : JSON.stringify(c.content));
+  assert.ok(notes.length >= 2 && notes.every((n) => !/the last one if you drew several/.test(n)), "the model is no longer told only the last picture shows");
+  assert.ok(notes.some((n) => /every diagram you draw is shown/.test(n)));
 });
 
 test("a phase already cited is not named again when the process is drawn", async () => {
@@ -624,4 +627,34 @@ test("a visitor who leaves while the check runs gets nothing more, not even done
   const r = await answer({ host, model: fakeModel([textTurn("Hello.")]), meter: meter(), verdict }, { messages: [{ role: "user", content: "hi" }], lang: "en", signal: ac.signal }, emit);
   assert.deepEqual(events.map(([e]) => e), ["text"]);
   assert.ok(!("claims" in r));
+});
+
+test("a context picture's relations name upstream and downstream and say it, and a process picture's keep from and to", () => {
+  const nodes = ["A", "B", "C"].map((title, i) => ({ node: `n${i}`, id: title, title, type: "bounded-context" }));
+  const links = [
+    { from: "n0", to: "n1", label: "U → D · conformist" },
+    { from: "n0", to: "n2", label: "U → D · customer/supplier" },
+    { from: "n1", to: "n2", label: "U → D · open host service" },
+    { from: "n1", to: "n0", label: "shared kernel" },
+    { from: "n2", to: "n1", label: "partnership" },
+    { from: "n0", to: "n2", label: "separate ways" },
+    { from: "n0", to: "n1", label: "something else" },
+    { from: "n0", to: "n1" },
+  ];
+  const context = JSON.parse(diagramNote({ shape: "context", nodes, links }));
+  assert.deepEqual(context.relations, [
+    { upstream: "A", downstream: "B", pattern: "conformist", says: "B conforms to A, its upstream" },
+    { upstream: "A", downstream: "C", pattern: "customer/supplier", says: "C is downstream of A, and the two relate as customer/supplier" },
+    { upstream: "B", downstream: "C", pattern: "open host service", says: "C is downstream of B, and the two relate as open host service" },
+    { between: ["B", "A"], pattern: "shared kernel", says: "B and A share a kernel" },
+    { between: ["C", "B"], pattern: "partnership", says: "C and B are partners" },
+    { between: ["A", "C"], pattern: "separate ways", says: "A and C go separate ways" },
+    { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "something else" },
+    { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context" },
+  ]);
+  assert.match(context.map, /never turn a relation around/);
+  assert.match(context.map, /in the answer's language/);
+  const process = JSON.parse(diagramNote({ shape: "process", nodes, links }));
+  assert.deepEqual(process.relations[0], { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "U → D · conformist" });
+  assert.equal(process.map, undefined);
 });

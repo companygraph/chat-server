@@ -198,6 +198,9 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /\bdiagram\b/);
   assert.match(DIAGRAM_RULE, /never the picture itself/);
   assert.match(DIAGRAM_RULE, /only the relations the tool listed/);
+  assert.match(DIAGRAM_RULE, /bounded context/);
+  assert.match(DIAGRAM_RULE, /shape context and then shape aggregate, both with the context's id/);
+  assert.match(DIAGRAM_RULE, /holds no aggregate/);
 });
 
 // An English question in German word order was answered in German on the companygraph.io host;
