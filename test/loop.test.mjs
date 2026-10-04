@@ -634,17 +634,26 @@ test("a context picture's relations name upstream and downstream and say it, and
   const links = [
     { from: "n0", to: "n1", label: "U → D · conformist" },
     { from: "n0", to: "n2", label: "U → D · customer/supplier" },
+    { from: "n1", to: "n2", label: "U → D · open host service" },
     { from: "n1", to: "n0", label: "shared kernel" },
     { from: "n2", to: "n1", label: "partnership" },
+    { from: "n0", to: "n2", label: "separate ways" },
+    { from: "n0", to: "n1", label: "something else" },
+    { from: "n0", to: "n1" },
   ];
   const context = JSON.parse(diagramNote({ shape: "context", nodes, links }));
   assert.deepEqual(context.relations, [
     { upstream: "A", downstream: "B", pattern: "conformist", says: "B conforms to A, its upstream" },
-    { upstream: "A", downstream: "C", pattern: "customer/supplier", says: "C is downstream of A and takes the customer/supplier pattern toward it" },
+    { upstream: "A", downstream: "C", pattern: "customer/supplier", says: "C is downstream of A, and the two relate as customer/supplier" },
+    { upstream: "B", downstream: "C", pattern: "open host service", says: "C is downstream of B, and the two relate as open host service" },
     { between: ["B", "A"], pattern: "shared kernel", says: "B and A share a kernel" },
-    { between: ["C", "B"], pattern: "partnership", says: "C and B share the partnership pattern, with neither upstream" },
+    { between: ["C", "B"], pattern: "partnership", says: "C and B are partners" },
+    { between: ["A", "C"], pattern: "separate ways", says: "A and C go separate ways" },
+    { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "something else" },
+    { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context" },
   ]);
   assert.match(context.map, /never turn a relation around/);
+  assert.match(context.map, /in the answer's language/);
   const process = JSON.parse(diagramNote({ shape: "process", nodes, links }));
   assert.deepEqual(process.relations[0], { from: "A", fromType: "bounded-context", to: "B", toType: "bounded-context", label: "U → D · conformist" });
   assert.equal(process.map, undefined);
