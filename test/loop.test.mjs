@@ -295,6 +295,8 @@ test("namesIn reads a list, ignores a refusal and a single entity, names an id o
   assert.deepEqual(namesIn({ entity: { id: "a/b", title: "A B" } }), [], "the entity itself is the cite's, not a name");
   assert.deepEqual(namesIn({ entity: { id: "a/b", references: [{ via: "Skills.Skill", to: { id: "skills/java", name: "Java" } }] } }),
     [{ id: "skills/java", title: "Java" }], "and what it references is a name");
+  assert.deepEqual(namesIn({ entity: { id: "contexts/resolution", referencedBy: [{ from: { id: "aggregates/graph", name: "Graph" }, via: "nested-in", to: { id: "contexts/resolution", name: "Resolution" } }] } }),
+    [{ id: "aggregates/graph", title: "Graph" }], "and so is what references it, by the edge's start");
   assert.equal(namesIn({ entities: Array.from({ length: NAME_CAP + 20 }, (_, i) => ({ id: `t/${i}`, name: `N ${i}` })) }).length, NAME_CAP);
   const repeats = { entity: { id: "p/x", references: Array.from({ length: 50 }, (_, i) => ({ via: "Evidence.Skill", to: { id: `skills/${i % 5}`, name: `Skill ${i % 5}` } })) } };
   assert.equal(namesIn(repeats).length, 5, "fifty edges to five skills are five names");
