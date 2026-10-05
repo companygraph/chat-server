@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
-import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS } from "../lib/shape.mjs";
+import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
-import { NAME_NOTE, nameNote, DIAGRAM_RULE } from "../lib/prompt.mjs";
+import { NAME_NOTE, nameNote, DIAGRAM_RULE, FACTS_RULE } from "../lib/prompt.mjs";
 import { startFixtureHost, EXAMPLE_ROOT, exampleSnapshot } from "./helpers.mjs";
 
 let fixture, host;
@@ -130,7 +130,7 @@ test("a tool answer over the cap reaches the model cut, with the line", async ()
   const result = model.requests[1].messages.at(-1).content[0].content;
   assert.ok(result.startsWith("a".repeat(MAX_TOOL_RESULT_CHARS)));
   assert.ok(result.length < MAX_TOOL_RESULT_CHARS + 200);
-  assert.match(result, /truncated at 16000 characters/);
+  assert.match(result, new RegExp(`truncated at ${MAX_TOOL_RESULT_CHARS} characters`));
 });
 
 test("a refused tool call goes back as an error result and the loop goes on", async () => {
@@ -766,4 +766,28 @@ test("diagramOf keeps a lifecycle's transitions for the note, drops a malformed 
   assert.equal("links" in drawn[0], false);
   const given = JSON.parse(model.requests[1].messages.at(-1).content[0].content);
   assert.equal(given.relations[0].says, "Account starts in Open on Open", "and the note reads them");
+});
+
+// A list call the model made without a page size is sent with one that arrives whole, and one
+// that asked for more than that is held to it; the page in the answer says how to go on.
+test("a list call gets a page that fits the cut, and other calls are sent as the model made them", async () => {
+  const sent = [];
+  const spy = { ...host, tools: host.tools, call: async (name, input) => { sent.push([name, input]); return host.call(name, input); } };
+  const model = fakeModel([toolTurn("list_entities", { type: "skill" }), toolTurn("list_entities", { type: "skill", limit: 200 }), toolTurn("list_types", {}), textTurn("Done.")]);
+  await answer({ host: spy, model, meter: meter() }, { messages: [{ role: "user", content: "skills?" }], lang: "en" }, collect().emit);
+  assert.deepEqual(sent.map(([, i]) => i.limit), [LIST_PAGE, LIST_PAGE, undefined]);
+  assert.ok(LIST_PAGE * 640 <= MAX_TOOL_RESULT_CHARS, "a page of entries of 640 characters, a sixth over the largest measured, fits the cut");
+});
+
+test("the prompt names today's date, and the rules for now only for a host whose list takes on", async () => {
+  const run = async (tools) => {
+    const model = fakeModel([textTurn("ok")]);
+    await answer({ host: { ...host, tools }, model, meter: meter(), today: () => "2026-10-05" }, { messages: [{ role: "user", content: "now?" }], lang: "en" }, collect().emit);
+    return model.requests[0].system[0].text;
+  };
+  const withOn = host.tools.map((t) => t.name === "list_entities" ? { ...t, input_schema: { ...t.input_schema, properties: { ...t.input_schema.properties, on: { type: "string" }, by: { type: "string" }, where: { type: "object" } } } } : t);
+  const without = host.tools.map((t) => t.name === "list_entities" ? { ...t, input_schema: { ...t.input_schema, properties: Object.fromEntries(Object.entries(t.input_schema.properties).filter(([k]) => !["on", "by", "where"].includes(k))) } } : t);
+  const a = await run(withOn), b = await run(without);
+  assert.match(a, /Today is 2026-10-05\./); assert.match(b, /Today is 2026-10-05\./);
+  assert.ok(a.includes(FACTS_RULE)); assert.ok(!b.includes(FACTS_RULE));
 });

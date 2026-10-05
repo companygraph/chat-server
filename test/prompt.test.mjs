@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS, DIAGRAM_RULE, DEFAULT_QUESTION_INDEX_CHARS, nameNote } from "../lib/prompt.mjs";
+import { systemPrompt, typeMap, questionIndexLine, RULES, QUESTION_RULE, KIND_RULE, LANGS, DIAGRAM_RULE, DEFAULT_QUESTION_INDEX_CHARS, nameNote, FACTS_RULE } from "../lib/prompt.mjs";
 
 // lib/prompt.mjs's RULES copied verbatim: at 63e6367, before the question index existed, and
 // since 0.12.2 with the escape sentence narrowed and the identity sentence added, both inside
@@ -73,7 +73,7 @@ test("the prompt is the host's instructions, then the types, then the rules, the
 });
 
 test("QUESTION_RULE is the spec's sentence, told to get_entity a matched question and name what it rests on, not the question", () => {
-  assert.ok(QUESTION_RULE.startsWith("When the visitor's question is one of the questions this model answers"));
+  assert.ok(QUESTION_RULE.startsWith("When the visitor's question asks the same thing as one of the questions this model answers"));
   assert.ok(QUESTION_RULE.includes("get_entity that question first"));
   assert.ok(QUESTION_RULE.includes("a question that rests on no entity is itself what the answer rests on, and is named"));
 });
@@ -212,4 +212,27 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
 test("the language rule and the name note say a learner's grammar does not change the language", () => {
   assert.match(systemPrompt("", "en"), /even where their grammar or spelling is a learner's: never answer in a language the visitor did not write in/);
   assert.match(nameNote("this are the rules"), /its language is the language its words are in, even where their grammar is a learner's/);
+});
+
+// The chat learns the date from the server, since a question about now needs one and the model
+// has none of its own; a host whose list_entities keeps a list to a date, orders it by one and
+// keeps it to a value is asked through those, and one without them reads as before.
+test("today's date and the rules for now, the latest and a kind come in only where given", () => {
+  const types = [{ type: "experience", count: 56, owner: "profile" }, { type: "question", count: 3, owner: null }];
+  const plain = systemPrompt("x", "en", types, ["What does it do?"]);
+  assert.equal(systemPrompt("x", "en", types, ["What does it do?"], undefined, false, false, {}), plain, "no options, the prompt as before");
+  const dated = systemPrompt("x", "en", types, ["What does it do?"], undefined, false, false, { today: "2026-10-05" });
+  assert.match(dated, /Today is 2026-10-05\./);
+  assert.ok(!dated.includes(FACTS_RULE), "a date alone brings no rule for arguments the host may not take");
+  const full = systemPrompt("x", "en", types, ["What does it do?"], undefined, false, false, { today: "2026-10-05", facts: true });
+  assert.ok(full.includes(FACTS_RULE));
+  assert.match(FACTS_RULE, /\bon\b.*today's date/);
+  assert.match(FACTS_RULE, /\bby\b.*newest/);
+  assert.match(FACTS_RULE, /\bwhere\b/);
+  assert.ok(full.indexOf(FACTS_RULE) > full.indexOf("A question about a kind of thing"), "after the rule for a kind of thing, which it narrows");
+});
+
+test("a model question is where an answer starts, not all of it", () => {
+  assert.match(QUESTION_RULE, /asks the same thing/);
+  assert.match(QUESTION_RULE, /more than the question/);
 });
