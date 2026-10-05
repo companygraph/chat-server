@@ -257,6 +257,23 @@ test("an answer the output limit cut says so in done, and one that ended on its 
   assert.equal("cut" in whole.events.at(-1)[1], false);
 });
 
+// The answer's language is the visitor's, whatever the page's, so the widget reads it off done
+// to offer what follows in it: a German answer on the English page says de.
+test("done names the language the answer is written in, and the request's where its words do not tell", async () => {
+  const german = collect();
+  await answer({ host, model: fakeModel([textTurn("Die Firma ist ein Unternehmen, das mit dem Modell arbeitet und auf der Seite steht.")]), meter: meter() }, { messages: [{ role: "user", content: "Was ist das?" }], lang: "en" }, german.emit);
+  assert.equal(german.events.at(-1)[1].lang, "de", "a German answer on the English page");
+  const english = collect();
+  await answer({ host, model: fakeModel([textTurn("The company is a firm that works with the model and is on the page.")]), meter: meter() }, { messages: [{ role: "user", content: "What is it?" }], lang: "de" }, english.emit);
+  assert.equal(english.events.at(-1)[1].lang, "en", "an English answer on the German page");
+  const bare = collect();
+  await answer({ host, model: fakeModel([textTurn("MLOps.")]), meter: meter() }, { messages: [{ role: "user", content: "MLOps" }], lang: "de" }, bare.emit);
+  assert.equal(bare.events.at(-1)[1].lang, "de", "a name alone tells nothing, so the request's language stands");
+  const none = collect();
+  await answer({ host, model: fakeModel([textTurn("MLOps.")]), meter: meter() }, { messages: [{ role: "user", content: "MLOps" }], lang: "fr" }, none.emit);
+  assert.equal(none.events.at(-1)[1].lang, "en", "and where the request names none the interface knows, English, as the prompt falls back");
+});
+
 test("an entity fetched in two rounds is cited once", async () => {
   const rootId = (await host.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
   const model = fakeModel([toolTurn("get_entity", { id: rootId }), toolTurn("get_entity", { id: rootId }), textTurn("It is the company.")]);
