@@ -39,6 +39,6 @@ test("a tool answer over the cap is cut with a line that says so", () => {
   const cut = truncate(big);
   assert.ok(cut.length < big.length);
   assert.ok(cut.startsWith("a".repeat(MAX_TOOL_RESULT_CHARS)));
-  assert.match(cut, /truncated at 16000 characters/);
+  assert.match(cut, new RegExp(`truncated at ${MAX_TOOL_RESULT_CHARS} characters`));
   assert.equal(truncate("short"), "short");
 });

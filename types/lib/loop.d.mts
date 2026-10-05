@@ -70,17 +70,18 @@ export declare const diagramNote: (d: Diagram) => string;
  */
 export declare function namesPastTheCap(host: Host, data: any): Promise<Title[]>;
 /**
- * @param {{ host: Host; model: Model; meter: Meter; questionCap?: number; verdict?: ReturnType<typeof verdictCheck> | null }} services
+ * @param {{ host: Host; model: Model; meter: Meter; questionCap?: number; verdict?: ReturnType<typeof verdictCheck> | null; today?: () => string }} services
  * @param {{ messages: unknown; lang?: string | null | undefined; signal?: AbortSignal | undefined }} request
  * @param {(event: string, data: unknown) => void} emit
  * @returns {Promise<Signals & { spent: number }>}
  */
-export declare function answer({ host, model, meter, questionCap, verdict }: {
+export declare function answer({ host, model, meter, questionCap, verdict, today }: {
     host: Host;
     model: Model;
     meter: Meter;
     questionCap?: number;
     verdict?: ReturnType<typeof verdictCheck> | null;
+    today?: () => string;
 }, { messages, lang, signal }: {
     messages: unknown;
     lang?: string | null | undefined;
