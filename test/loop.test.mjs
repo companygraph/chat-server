@@ -242,7 +242,7 @@ test("a day's share that fits one call refuses the second, and the first call's 
     (e) => e.code === "over_day",
   );
   assert.equal(model.requests.length, 1);
-  assert.deepEqual(events.map(([e]) => e), ["text"]);
+  assert.deepEqual(events.map(([e]) => e), [], "the round that called a tool sent nothing of its text");
   assert.equal((await m.state()).dayTokens, 1000 + 500, "the refused reserve added nothing");
 });
 
@@ -605,7 +605,7 @@ test("the check reads the text, every returned entity and the tool answer it cam
   const kinds = events.map(([e]) => e);
   assert.deepEqual(kinds.slice(-2), ["verdict", "done"]);
   assert.ok(kinds.lastIndexOf("text") < kinds.indexOf("verdict"));
-  assert.equal(seen[0].text, `Looking. ${EXAMPLE_ROOT} is the company.`);
+  assert.equal(seen[0].text, `${EXAMPLE_ROOT} is the company.`, "the round that called a tool sent nothing, so the check reads the answer alone");
   assert.equal(seen[0].returned[0].id, rootId, "the cited entity first, then what its answer named");
   assert.ok(seen[0].evidence.get(rootId).some((t) => t.includes(rootId)), "the evidence is the tool answer the model was given");
   assert.equal(seen[0].lang, "en");
@@ -790,4 +790,21 @@ test("the prompt names today's date, and the rules for now only for a host whose
   const a = await run(withOn), b = await run(without);
   assert.match(a, /Today is 2026-10-05\./); assert.match(b, /Today is 2026-10-05\./);
   assert.ok(a.includes(FACTS_RULE)); assert.ok(!b.includes(FACTS_RULE));
+});
+
+// Text written in a round that goes on to call a tool is the model talking about what it will
+// do, not the answer: "so let me get every experience" opened one answer of five at v0.29.1
+// although the prompt forbids a preface. The loop sends a round's text only where the round
+// calls nothing, and the answer the check reads is what was sent.
+test("a round that calls a tool sends none of its text, and the answer is the text of the round that called nothing", async () => {
+  const seen = [];
+  const model = fakeModel([toolTurn("list_types", {}, "So let me list the types first."), textTurn("There are skills.")]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter(), verdict: async (m) => { seen.push(m.text); return null; } }, { messages: [{ role: "user", content: "types?" }], lang: "en" }, emit);
+  assert.deepEqual(events.filter(([e]) => e === "text").map(([, d]) => d.text), ["There are skills."]);
+  assert.deepEqual(seen, ["There are skills."], "the check reads what the visitor reads");
+  const forced = fakeModel([...Array.from({ length: MAX_ROUNDS }, () => toolTurn("list_types", {})), toolTurn("list_types", {}, "What I have is this.")]);
+  const last = collect();
+  await answer({ host, model: forced, meter: meter() }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, last.emit);
+  assert.deepEqual(last.events.filter(([e]) => e === "text").map(([, d]) => d.text), ["What I have is this."], "the last request's text is the answer whatever it asked for");
 });

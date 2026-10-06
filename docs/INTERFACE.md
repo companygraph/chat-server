@@ -30,7 +30,7 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 
 | Event | Data | When |
 | --- | --- | --- |
-| `text` | `{ text }` | a piece of the answer, as it is generated, in order |
+| `text` | `{ text }` | the answer, sent once the round that writes it ends; text the model writes in a round that goes on to call a tool is not the answer and is never sent |
 | `cite` | `{ id, title, type, url }`, `url` null where the host names no file | a tool answered with one entity, or evidence for one skill; the widget links it, and an entity cited already in this message is not cited twice |
 | `names` | `{ names: [{ id, title }] }` | every entity a list answer named, and every entity an entity answer references past the fifty edges it holds, read from the host; at most three hundred a message, each once and never one the answer also cites; the widget links these names where the text writes them |
 | `diagram` | `{ shape, title, mermaid, nodes: [{ node, id, title, type }], omitted }` | the host's `diagram` tool answered: Mermaid source the host built from the model's edges, for the widget to draw under the answer, each node named in `nodes` by the entity it is so the widget links it; the model reads what was drawn and never the source, and a message with several draws each, in the order they came, from robertblust/design v0.134.1 on |
