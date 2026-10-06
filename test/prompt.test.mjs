@@ -236,3 +236,18 @@ test("a model question is where an answer starts, not all of it", () => {
   assert.match(QUESTION_RULE, /asks the same thing/);
   assert.match(QUESTION_RULE, /more than the question/);
 });
+
+// Asked what Robert works on today, the chat matched "Is Robert studying anything now?" in two
+// runs of four on chat.blust.ch at v0.29.0 and answered from that question alone: the rule for
+// now stood before the question rule, and the question rule, read last, won. Now the rule for
+// now stands after it and says it comes first, with the matched question's entities beside it.
+test("the rule for now comes after the question rule and says it wins over a matching question", () => {
+  const types = [{ type: "question", count: 3, owner: null }, { type: "question-kind", count: 1, owner: null }];
+  const p = systemPrompt("x", "en", types, ["Is it running now?"], undefined, false, false, { today: "2026-10-06", facts: true });
+  assert.ok(p.indexOf(FACTS_RULE) > p.indexOf(QUESTION_RULE), "after the question rule");
+  assert.ok(p.indexOf(FACTS_RULE) > p.indexOf(KIND_RULE), "and after the rule for its kinds");
+  assert.match(FACTS_RULE, /even where/);
+  assert.match(FACTS_RULE, /never in its place/);
+  const bare = systemPrompt("x", "en", [], [], undefined, false, false, { today: "2026-10-06", facts: true });
+  assert.ok(bare.indexOf(FACTS_RULE) > bare.indexOf("A question about a kind of thing"), "with no questions, after the rule for a kind of thing");
+});
