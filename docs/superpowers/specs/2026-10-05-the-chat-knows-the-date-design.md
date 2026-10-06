@@ -28,7 +28,9 @@ A tool answer can now be twice as long, and each later round of a message sends 
 
 `test/prompt.test.mjs` holds that the date and the rule come in only where given and that the prompt is unchanged without them, that the rule names `on` with today's date, `by` with `newest` and `where`, and that it stands after the rule for a kind of thing. `test/loop.test.mjs` holds that a list call is sent with a page that fits and a call of another tool as the model made it, and that the date reaches the prompt with the rule for a host whose list takes the arguments and without it for one that does not.
 
-The rules are not yet measured against the model. Once a deployment runs this release and an mcp-server release with the arguments, the owner's question and four of its kind, now, the latest role, the standing decisions and the whole history, are each asked five times there, and what each answer called is read from the kept questions.
+Measured on chat.blust.ch at v0.29.0 with mcp-server v0.58.0, on 2026-10-05: the owner's question, what Robert is working on today, named all four running experiences in two runs of four, and a variant asking for his current roles and projects in its one run. Both misses went one way: the chat matched the model's question "Is Robert studying anything now?" and answered from what it rests on alone. The rule for now stood before the question rule, and the question rule, read after it, won.
+
+So the rule for now stands after the question rule and the rule for its kinds, as the exception to them, and says so: a question about now calls the list on today's date first even where it also matches one of the model's questions, and that question's entities are added beside the list, never in its place. Once that release runs, the owner's question and four of its kind, now, the latest role, the standing decisions and the whole history, are each asked five times there.
 
 ## 5. Release
 
