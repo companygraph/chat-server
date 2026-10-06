@@ -251,3 +251,10 @@ test("the rule for now comes after the question rule and says it wins over a mat
   const bare = systemPrompt("x", "en", [], [], undefined, false, false, { today: "2026-10-06", facts: true });
   assert.ok(bare.indexOf(FACTS_RULE) > bare.indexOf("A question about a kind of thing"), "with no questions, after the rule for a kind of thing");
 });
+
+// A visitor's question about a person's latest role was read, in one run of five at v0.29.1, as
+// a question about the model's own type role, the seats of its processes.
+test("a person's role is their experiences, never the model's own role type", () => {
+  assert.match(FACTS_RULE, /a person's role, job or position is about their experiences/);
+  assert.match(FACTS_RULE, /never about the type role/);
+});

@@ -33,13 +33,13 @@ The rules are `RULES`, in order, with four rules spliced in where their conditio
 | 8 | A kind of thing is a list | `A question about a kind of thing` | always | [`793bf1e`](https://github.com/companygraph/chat-server/commit/793bf1e) |
 | 9 | Start from the model's question (`QUESTION_RULE`) | `When the visitor's question asks the same thing` | the model declares `question` | [`0d31f7d`](https://github.com/companygraph/chat-server/commit/0d31f7d) |
 | 10 | The kinds of question (`KIND_RULE`) | `A question about the questions this model answers` | the model also declares `question-kind` | [`7705ff2`](https://github.com/companygraph/chat-server/commit/7705ff2) |
-| 11 | Now, the latest, a value (`FACTS_RULE`) | `Each entity list_entities returns carries fields` | the host's `list_entities` takes `on`, `by` and `where` | [`f99a82c`](https://github.com/companygraph/chat-server/commit/f99a82c) |
+| 11 | Now, the latest, a value, a person's role (`FACTS_RULE`) | `Each entity list_entities returns carries fields` | the host's `list_entities` takes `on`, `by` and `where` | [`f99a82c`](https://github.com/companygraph/chat-server/commit/f99a82c) |
 | 12 | No reason for an earlier answer | `A question about why an earlier answer said what it did` | always | [`557c1ae`](https://github.com/companygraph/chat-server/commit/557c1ae) |
 | 13 | Always a tool | `Every question about this model is answered through a tool` | always | [`e989aec`](https://github.com/companygraph/chat-server/commit/e989aec) |
 | 14 | Naming in another language | `In an answer in any language but English` | always | [`5cba9dd`](https://github.com/companygraph/chat-server/commit/5cba9dd) |
 | 15 | No preface | `Call a tool without a preface` | always | [`3dc650c`](https://github.com/companygraph/chat-server/commit/3dc650c) |
 
-Two splices are placed for what they say. The rule for a picture stands right after the Markdown subset, which it adds to: the model calls the tool and writes a sentence or two about what the picture shows, never the picture itself. The rule for now, the latest and a value stands after the question rule and the rule for its kinds, because it is their exception: a question about now is answered from the list on today's date even where it also matches one of the model's questions.
+Two splices are placed for what they say. The rule for a picture stands right after the Markdown subset, which it adds to: the model calls the tool and writes a sentence or two about what the picture shows, never the picture itself. The rule for now, the latest, a value and a person's role stands after the question rule and the rule for its kinds, because it is their exception: a question about now is answered from the list on today's date even where it also matches one of the model's questions.
 
 ## Outside the system prompt
 

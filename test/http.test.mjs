@@ -7,6 +7,7 @@ import { Meter, MemoryStore } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
 import { MAX_BODY_BYTES } from "../lib/shape.mjs";
 import { startFixtureHost, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
+import { ChatError } from "../lib/errors.mjs";
 
 const raw = (base, path, headers) => new Promise((resolve, reject) => {
   const u = new URL(base);
@@ -165,9 +166,18 @@ test("a host that is gone before any text is a JSON refusal, and gone mid-stream
   await second.close();
   const call = { content: [{ type: "tool_use", id: "t", name: "list_types", input: {} }], stop_reason: "tool_use", usage };
   const silent = { name: "fake", async turn() { return call; } };
-  const talking = { name: "fake", async turn(req, onText) { onText("Looking…"); return { ...call, content: [{ type: "text", text: "Looking…" }, ...call.content] }; } };
-  const start = async (model) => {
-    const server = createHttpServer({ config: config(), host: h, model, meter: new Meter(new MemoryStore(), { monthTokens: 1_000_000 }), bucket: new Bucket() });
+  // A preface before a tool call is never sent, so what opens the stream mid-answer is an event
+  // a tool's answer brings: a host that answers one call, a cite, and is gone for the next.
+  const live = await startFixtureHost();
+  const lh = await connectHost(live.url);
+  after(async () => { await lh.close(); await live.close(); });
+  const rootId = (await lh.call("search", { query: EXAMPLE_ROOT, match: "name" })).data.results[0].id;
+  let calls = 0;
+  const flaky = { ...lh, tools: lh.tools, call: async (n, i) => { if (calls++ === 0) return lh.call(n, i); throw new ChatError("host_down", "the MCP host did not answer"); } };
+  const fetchThenList = [{ content: [{ type: "text", text: "Looking…" }, { type: "tool_use", id: "a", name: "get_entity", input: { id: rootId } }], stop_reason: "tool_use", usage }, call];
+  const talking = { name: "fake", async turn(req, onText) { const t = fetchThenList.shift(); for (const c of t.content) if (c.type === "text") onText(c.text); return t; } };
+  const start = async (model, host = h) => {
+    const server = createHttpServer({ config: config(), host, model, meter: new Meter(new MemoryStore(), { monthTokens: 1_000_000 }), bucket: new Bucket() });
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
     after(() => server.close());
     return `http://127.0.0.1:${server.address().port}`;
@@ -175,10 +185,11 @@ test("a host that is gone before any text is a JSON refusal, and gone mid-stream
   const before = await post(await start(silent), { messages: [{ role: "user", content: "hi" }] });
   assert.equal(before.status, 502);
   assert.equal((await before.json()).error.code, "host_down");
-  const mid = await post(await start(talking), { messages: [{ role: "user", content: "hi" }] });
+  const mid = await post(await start(talking, flaky), { messages: [{ role: "user", content: "hi" }] });
   assert.equal(mid.status, 200);
   const ev = await events(mid);
-  assert.deepEqual(ev[0], ["text", { text: "Looking…" }]);
+  assert.equal(ev[0][0], "cite", "the stream opens on the first tool's answer");
+  assert.ok(!ev.some(([e]) => e === "text"), "the preface before the call is not sent");
   assert.equal(ev.at(-1)[0], "error");
   assert.equal(ev.at(-1)[1].error.code, "host_down");
   await h.close();
@@ -353,19 +364,24 @@ test("a visitor who leaves mid-answer is kept with what the loop had, not as int
   const original = console.error;
   console.error = (...args) => errors.push(args.join(" "));
   after(() => { console.error = original; });
+  // The visitor leaves while the first request is still with the model: nothing has been sent,
+  // since a round's text waits for the round to end, so the socket closing is all the server sees.
+  let started = () => {};
+  const turning = new Promise((res) => { started = res; });
   const model = {
     name: "fake",
     turn: (req, onText, { signal }) => new Promise((resolve, reject) => {
       onText("Looking…");
+      started();
       signal.addEventListener("abort", () => reject(Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })));
     }),
   };
   const base = await listen({ model, log });
   const ac = new AbortController();
-  const r = await fetch(`${base}/chat`, { method: "POST", headers: { "content-type": "application/json", origin: "https://site.test", "x-chat": "1" }, body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], lang: "en" }), signal: ac.signal });
-  const reader = r.body.getReader();
-  await reader.read();
+  const pending = fetch(`${base}/chat`, { method: "POST", headers: { "content-type": "application/json", origin: "https://site.test", "x-chat": "1" }, body: JSON.stringify({ messages: [{ role: "user", content: "hi" }], lang: "en" }), signal: ac.signal }).catch(() => null);
+  await turning;
   ac.abort();
+  await pending;
   const until = Date.now() + 5000;
   while (out.length === 0 && Date.now() < until) await new Promise((res) => setTimeout(res, 20));
   assert.equal(out.length, 1);

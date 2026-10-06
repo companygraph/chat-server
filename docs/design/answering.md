@@ -23,8 +23,11 @@ sequenceDiagram
     loop each round, at most MAX_ROUNDS
       Answer->>Answer: meter reserves the call
       Answer->>Model: system, tools, conversation
-      Model-->>Page: text, as it is written
+      Model-->>Answer: text, held until the round ends
       Answer->>Answer: meter settles what the call cost
+      opt the round calls no tool
+        Answer-->>Page: text, the answer
+      end
       opt the model calls tools
         Answer->>Host: each call, a list sized to a page
         Host-->>Answer: the tool's answer, cut to size
@@ -48,7 +51,7 @@ sequenceDiagram
 
 **Before the first call** (`lib/loop.mjs`, `answer()`). The shape is checked again and the conversation cut to its window (`lib/shape.mjs`). The host's types and questions are read, cached per commit (`lib/host.mjs`), and the system prompt is built as [The prompt](prompt.md) shows. Every call reserves its estimate from the meter and settles at once against what it cost (`lib/meter.mjs`), so a spent day or month refuses the next call and never one already made.
 
-**A round.** The model is sent the system prompt, the host's tools and the conversation, and its text goes to the page as it comes. Each tool it calls goes to the host, a list with a page that arrives whole (`pageSized()` in `lib/shape.mjs`), and the answer is cut to the size `truncate()` allows before the model reads it. One entity answered is a `cite`, every entity a list named is a `names` event, and a picture the host drew is a `diagram` event the page draws while the model reads only a note of it. After the tool answers the model reads the naming note (`nameNote()` in `lib/prompt.mjs`), the last thing before it writes.
+**A round.** The model is sent the system prompt, the host's tools and the conversation, and its text is held until the round ends: sent where the round calls no tool, since that text is the answer, and never where it calls one, since that text is the model saying what it will do. Each tool it calls goes to the host, a list with a page that arrives whole (`pageSized()` in `lib/shape.mjs`), and the answer is cut to the size `truncate()` allows before the model reads it. One entity answered is a `cite`, every entity a list named is a `names` event, and a picture the host drew is a `diagram` event the page draws while the model reads only a note of it. After the tool answers the model reads the naming note (`nameNote()` in `lib/prompt.mjs`), the last thing before it writes.
 
 **The last request** forbids a tool call and says to answer from what the tools returned (`FINAL_NOTE` in `lib/model.mjs`). A silence is asked once more as the last request; an answer the output limit cut is not a silence, and `done` says `cut`.
 
