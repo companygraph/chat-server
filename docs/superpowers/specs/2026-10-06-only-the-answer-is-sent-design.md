@@ -21,3 +21,5 @@ The page loses nothing it shows. The widget holds an answer until the stream end
 `test/loop.test.mjs` holds that a round that calls a tool sends none of its text, that the answering round's text is the answer and what the check reads, and that the last request's text is sent whatever it asked for. `test/http.test.mjs` holds the mid-stream refusal with a stream opened by a `cite`, and a visitor who leaves before anything was sent. `test/prompt.test.mjs` holds the sentence on roles.
 
 The next minor, since a client receives `text` differently. Once deployed, the two questions it answers, his latest role and his whole work history, are each asked five times on chat.blust.ch.
+
+Measured on chat.blust.ch at v0.30.0 with mcp-server v0.58.0, on 2026-10-06, five runs each. His latest role named IT Architect at Läderach in five of five, where v0.29.1 named it in three. His whole work history listed his roles in order with their dates in five of five. Every one of the ten answers arrived as one `text` event and opened on the answer, with no sentence about what the chat was going to call.
