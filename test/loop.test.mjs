@@ -585,7 +585,7 @@ test("a picture of the schemas keeps what every other type declares and the core
 });
 
 test("a type in a picture of the schemas is no name the answer links", () => {
-  const data = { shape: "schema", nodes: [{ node: "n0", id: "core/role", title: "role", type: "schema" }, { node: "n1", id: "concepts/claim", title: "Claim", type: "concept" }] };
+  const data = { shape: "schema", nodes: [{ node: "n0", id: "core/seat", title: "seat", type: "schema" }, { node: "n1", id: "concepts/claim", title: "Claim", type: "concept" }] };
   assert.deepEqual(namesIn(data), [{ id: "concepts/claim", title: "Claim" }]);
 });
 
