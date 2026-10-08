@@ -11,9 +11,20 @@ import { createHttpServer } from "companygraph-mcp-server/http";
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "meta-model");
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
+// The packs the example takes, since meta-model v0.86.0 the organization pack, whose groups, group
+// kinds and jobs it holds. The example has no manifest to name them, so they are named here once;
+// each pack's schemas ride beside core's under `<pack>/<file>`, the key the parser reads a pack's
+// schema by, or the parser refuses the pack's folders as declared by no schema (R13).
+const EXAMPLE_PACKS = ["organization"];
+
 export function exampleSnapshot() {
   const files = readDir(path.join(fixtures, "example", "model"));
   const schemas = readDir(path.join(fixtures, "core"));
+  for (const pack of EXAMPLE_PACKS) {
+    // A fixture fetched at an earlier release holds no such pack, and its example takes none.
+    const dir = path.join(fixtures, "packs", pack);
+    if (fs.existsSync(dir)) for (const [file, text] of readDir(dir)) schemas.set(`${pack}/${file}`, text);
+  }
   return buildSnapshot({ files, schemas, sub: "example/model/", core: "core/", commit: COMMIT, repo: "companygraph/meta-model" });
 }
 
