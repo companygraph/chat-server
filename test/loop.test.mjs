@@ -808,3 +808,29 @@ test("a round that calls a tool sends none of its text, and the answer is the te
   await answer({ host, model: forced, meter: meter() }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, last.emit);
   assert.deepEqual(last.events.filter(([e]) => e === "text").map(([, d]) => d.text), ["What I have is this."], "the last request's text is the answer whatever it asked for");
 });
+
+test("diagramNote says each line of an organization in words, names an opening as one, and points the answer at the groups' pages", () => {
+  const nodes = [
+    { node: "g0", id: "g/m", title: "Management", type: "group" }, { node: "n0", id: "p/ines", title: "Ines Marchetti", type: "profile" },
+    { node: "n1", id: "p/jonas", title: "Jonas Whitcombe", type: "profile" },
+    { node: "g1", id: "g/legal", title: "Legal", type: "group" }, { node: "n2", id: "j/counsel", title: "Legal Counsel", type: "job" },
+    { node: "g2", id: "g/eng", title: "Engineering", type: "group" }, { node: "n3", id: "p/mira", title: "Mira Halvorsen", type: "profile" },
+    { node: "g3", id: "g/ops", title: "Operations", type: "group" },
+  ];
+  const links = [
+    { from: "n0", to: "n1", label: "Staff" }, { from: "n0", to: "n2", label: "staff" },
+    { from: "n0", to: "n3", label: "part-of" }, { from: "n0", to: "g3", label: "part-of" },
+  ];
+  const note = JSON.parse(diagramNote({ shape: "organization", title: null, nodes, edges: 4, omitted: 1, links }));
+  assert.deepEqual(note.relations.map((r) => r.says), [
+    "Jonas Whitcombe serves Ines Marchetti as staff",
+    "the open Legal Counsel position serves Ines Marchetti from beside, as a staff unit",
+    "Mira Halvorsen answers to Ines Marchetti",
+    "the unit Operations answers to Ines Marchetti",
+  ]);
+  assert.match(note.organization, /get_entity/);
+  assert.match(note.organization, /type job is an open position/);
+  assert.match(note.organization, /omitted counts the groups outside the disciplinary line/);
+  assert.match(note.organization, /never relations/);
+  assert.equal("organization" in JSON.parse(diagramNote({ shape: "concepts", title: "A", nodes, edges: 4, omitted: 0, links })), false);
+});
