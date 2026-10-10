@@ -202,6 +202,7 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /shape concepts, process, neighborhood, context, aggregate, flow, lifecycle, organization, system or holds/);
   assert.match(DIAGRAM_RULE, /One who asks to see a system, or the diagram of one, what it connects to, what runs on it or what it runs on, or what data it holds, is shown shape system and then shape holds, both with the system's id, and the answer names what each drew; where holds refuses as empty, the landscape stands alone and the answer says in one sentence that the model names no data the system holds/);
   assert.match(DIAGRAM_RULE, /One who asks which system masters a concept is answered in words from the pages through get_entity, and shown no picture unless they ask to see one/);
+  assert.match(DIAGRAM_RULE, /a system's connections are its landscape, never a neighborhood/);
   assert.match(DIAGRAM_RULE, /One who asks how the company is organized or for an org chart is shown shape organization, with a group's id where they name one/);
   assert.match(DIAGRAM_RULE, /then calls get_entity on every group it drew, and the answer names each group's lead, its members and its open positions as those pages give them, never as read off the picture or its lines/);
   assert.match(DIAGRAM_RULE, /stating only the relations the tool listed, or for an organization what get_entity gave for its groups,/);
