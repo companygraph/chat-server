@@ -200,7 +200,11 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /only the relations the tool listed/);
   assert.match(DIAGRAM_RULE, /bounded context/);
   assert.match(DIAGRAM_RULE, /shape concepts, process, neighborhood, context, aggregate, flow, lifecycle or organization/);
-  assert.match(DIAGRAM_RULE, /how the company is organized, who leads what, who works in a group, or for an org chart, is shown shape organization, with a group's id where they name one/);
+  assert.match(DIAGRAM_RULE, /One who asks how the company is organized or for an org chart is shown shape organization, with a group's id where they name one/);
+  assert.match(DIAGRAM_RULE, /then calls get_entity on every group it drew, and the answer names each group's lead, its members and its open positions as those pages give them, never as read off the picture or its lines/);
+  assert.match(DIAGRAM_RULE, /stating only the relations the tool listed, or for an organization what get_entity gave for its groups,/);
+  assert.match(DIAGRAM_RULE, /One who asks who leads a group or who works in one is answered from that group's page through get_entity, in words, and shown no picture unless they ask to see one/);
+  assert.doesNotMatch(DIAGRAM_RULE, /who leads what/);
   assert.match(DIAGRAM_RULE, /where its omitted is above zero, the answer says in one sentence that the groups outside the line are drawn when one is named/);
   assert.match(DIAGRAM_RULE, /a bounded context, or the diagrams of one, is shown shape context, then aggregate, then flow, then lifecycle, all with the context's id/);
   assert.match(DIAGRAM_RULE, /the map stands alone and the answer says only that the context holds no aggregate; otherwise, where flow or lifecycle refuses as empty,/);
