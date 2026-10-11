@@ -45,14 +45,17 @@ export declare const WEIGHTS: {
 };
 export declare const FINAL_NOTE = "No further tool can be called in this message. Write the answer now from what the tools have answered, naming the entities it rests on, and where they did not say, say the model does not say.";
 /**
- * @param {{ system: string; tools: Anthropic.Tool[]; messages: Anthropic.MessageParam[]; final?: boolean }} turn
+ * @param {{ system: string; tools: Anthropic.Tool[]; messages: Anthropic.MessageParam[]; final?: boolean; again?: boolean }} turn
+ *   `final` is the last request, which forbids a call; `again` is that request asked a second
+ *   time after a silence, with an empty tool list.
  * @returns {Request}
  */
-export declare function params({ system, tools, messages, final }: {
+export declare function params({ system, tools, messages, final, again }: {
     system: string;
     tools: Anthropic.Tool[];
     messages: Anthropic.MessageParam[];
     final?: boolean;
+    again?: boolean;
 }): Request;
 /**
  * @param {unknown} err
