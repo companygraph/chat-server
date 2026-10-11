@@ -809,6 +809,33 @@ test("a round that calls a tool sends none of its text, and the answer is the te
   assert.deepEqual(last.events.filter(([e]) => e === "text").map(([, d]) => d.text), ["What I have is this."], "the last request's text is the answer whatever it asked for");
 });
 
+test("diagramNote says each line of a system's two pictures in words, the way the line is drawn", () => {
+  const nodes = [
+    { node: "n0", id: "s/chat", title: "Chat server", type: "system" }, { node: "n1", id: "s/run", title: "Cloud Run", type: "system" },
+    { node: "n2", id: "s/mcp", title: "MCP server", type: "system" }, { node: "n3", id: "sv/answer", title: "Chat answer", type: "service" },
+    { node: "n4", id: "d/log", title: "Question log", type: "data-object" }, { node: "n5", id: "s/logging", title: "Cloud Logging", type: "system" },
+    { node: "n6", id: "c/conv", title: "Conversation", type: "concept" },
+  ];
+  const links = [
+    { from: "n0", to: "n1", label: "part-of" }, { from: "n2", to: "n0", label: "Streamable HTTP · Entity · HTTPS" }, { from: "n2", to: "n0", label: "" },
+    { from: "n0", to: "n3", label: "provided-by" }, { from: "n0", to: "n4", label: "writes" }, { from: "n5", to: "n4", label: "master" }, { from: "n0", to: "n6", label: "reads" },
+  ];
+  const note = JSON.parse(diagramNote({ shape: "system", title: "Chat server", nodes, edges: 7, omitted: 0, links }));
+  assert.deepEqual(note.relations.map((r) => r.says), [
+    "Chat server runs on Cloud Run",
+    "Chat server takes data from MCP server over Streamable HTTP · Entity · HTTPS",
+    "Chat server takes data from MCP server",
+    "Chat server provides the service Chat answer",
+    "Chat server writes a copy of Question log",
+    "Cloud Logging holds the master copy of Question log",
+    "Chat server reads Conversation",
+  ]);
+  const held = JSON.parse(diagramNote({ shape: "holds", title: "Chat server", nodes, edges: 3, omitted: 0, links: links.slice(4) }));
+  assert.deepEqual(held.relations.map((r) => r.says), ["Chat server writes a copy of Question log", "Cloud Logging holds the master copy of Question log", "Chat server reads Conversation"]);
+  assert.match(note.system, /says states a line of the landscape/);
+  assert.equal("system" in JSON.parse(diagramNote({ shape: "concepts", title: "A", nodes, edges: 1, omitted: 0, links: links.slice(0, 1) })), false);
+});
+
 test("diagramNote says each line of an organization in words, names an opening as one, and points the answer at the groups' pages", () => {
   const nodes = [
     { node: "g0", id: "g/m", title: "Management", type: "group" }, { node: "n0", id: "p/ines", title: "Ines Marchetti", type: "profile" },
