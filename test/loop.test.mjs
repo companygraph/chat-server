@@ -103,9 +103,11 @@ test("an answer of no text is asked for once more, as the last request, and a se
   const { events, emit } = collect();
   await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "q" }], lang: "en" }, emit);
   assert.equal(model.requests.length, 3, "the silence cost one more request");
-  assert.deepEqual(model.requests.at(-1).tool_choice, { type: "none" }, "which is the last request");
+  assert.deepEqual(model.requests.at(-1).tools, [], "which lists no tool, since a listed tool is what the silent model still meant to call");
+  assert.equal(model.requests.at(-1).tool_choice, undefined, "and names no choice over them");
   assert.equal(model.requests.at(-1).messages.at(-1).content.at(-1).text, FINAL_NOTE, "with the note");
   assert.equal(model.requests.at(-1).messages.length, 3, "and the silent message is not in the conversation");
+  assert.equal(model.requests.at(-2).tools.length, host.tools.length, "the round before it listed them");
   assert.deepEqual(events.filter(([e]) => e === "text").map(([, d]) => d.text), ["Now it says."]);
   assert.equal(events.at(-1)[0], "done");
   const twice = fakeModel([silent, silent, textTurn("never")]);
@@ -113,6 +115,7 @@ test("an answer of no text is asked for once more, as the last request, and a se
   await answer({ host, model: twice, meter: meter() }, { messages: [{ role: "user", content: "q" }], lang: "en" }, again.emit);
   assert.equal(twice.requests.length, 2, "a second silence is not asked again");
   assert.deepEqual(twice.requests[1].messages[0].content.map((b) => b.text), ["q", FINAL_NOTE], "the note follows the question when no tool was called");
+  assert.deepEqual(twice.requests[1].tools, [], "and no tool is listed there either");
   assert.deepEqual(again.events.map(([e]) => e), ["done"]);
   const cut = fakeModel([{ content: [], stop_reason: "max_tokens", usage }, textTurn("never")]);
   const cutEvents = collect();

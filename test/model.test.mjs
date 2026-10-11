@@ -39,6 +39,18 @@ test("the final round keeps the tools listed and forbids another call", () => {
   assert.deepEqual(r.tool_choice, { type: "none" });
 });
 
+test("the second ask carries no tools and no tool choice, and still the note", () => {
+  const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }];
+  const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "tool_use", id: "a", name: "search", input: {} }] }, { role: "user", content: results }];
+  const r = params({ system: "S", tools, messages, final: true, again: true });
+  assert.deepEqual(r.tools, [], "the tool list is empty, so there is nothing the model could still mean to call");
+  assert.equal(r.tool_choice, undefined, "and no choice is named over a list that is not there");
+  assert.equal(r.messages.at(-1).content.at(-1).text, FINAL_NOTE, "the note still says why");
+  assert.equal(r.messages.at(-1).content.at(-2).type, "tool_result", "after the last tool's answer");
+  assert.deepEqual(r.system, [{ type: "text", text: "S", cache_control: { type: "ephemeral" } }], "the rest of the request is the last request's");
+  assert.equal(params({ system: "S", tools, messages, final: true }).tools.length, 2, "the first final request keeps them listed");
+});
+
 test("the final round says so to the model: the note follows the last tool answer, and no other round carries it", () => {
   const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }];
   const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "tool_use", id: "a", name: "search", input: {} }] }, { role: "user", content: results }];
