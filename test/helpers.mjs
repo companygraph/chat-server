@@ -12,11 +12,12 @@ const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtur
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
 // The packs the example takes, since meta-model v0.86.0 the organization pack, whose groups, group
-// kinds and jobs it holds, and since v0.89.0 the landscape pack, whose systems, system kinds, data
-// objects and services it holds. The example has no manifest to name them, so they are named here
+// kinds and jobs it holds, since v0.89.0 the landscape pack, whose systems, system kinds, data
+// objects and services it holds, and since v0.94.0 the requirements pack, whose use cases and
+// requirements it holds. The example has no manifest to name them, so they are named here
 // once; each pack's schemas ride beside core's under `<pack>/<file>`, the key the parser reads a
 // pack's schema by, or the parser refuses the pack's folders as declared by no schema (R13).
-const EXAMPLE_PACKS = ["organization", "landscape"];
+const EXAMPLE_PACKS = ["organization", "landscape", "requirements"];
 
 export function exampleSnapshot() {
   const files = readDir(path.join(fixtures, "example", "model"));

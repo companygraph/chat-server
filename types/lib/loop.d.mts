@@ -15,6 +15,16 @@ export type Transition = {
     to: string;
     command: string | null;
 };
+export type Step = {
+    step: string;
+    actor: string;
+    action: string;
+};
+export type Extension = {
+    step: string;
+    condition: string;
+    handling: string;
+};
 export type Diagram = {
     shape: string;
     title: string | null;
@@ -38,6 +48,9 @@ export type Diagram = {
     }[];
     core?: string | null;
     transitions?: Transition[];
+    steps?: Step[];
+    extensions?: Extension[];
+    actor?: string;
     edges?: number;
 };
 export declare const NAME_CAP = 300;
