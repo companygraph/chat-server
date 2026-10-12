@@ -906,8 +906,54 @@ test("diagramOf keeps a scenario's steps and extensions, and diagramNote states 
   assert.deepEqual(note.relations, [
     { step: "1", actor: "Payer", action: "Finds the invoice", says: "Step 1: Payer, Finds the invoice" },
     { step: "2", actor: "Billing Clerk", action: "Asks for a copy", says: "Step 2: Billing Clerk, Asks for a copy" },
-    { step: "1a", condition: "The period is still open", handling: "The page says when it closes", says: "Extension 1a departs from step 1 where The period is still open: The page says when it closes" },
+    { step: "1a", condition: "The period is still open", handling: "The page says when it closes", says: "Extension 1a departs from step 1. Condition: The period is still open. Then: The page says when it closes" },
   ]);
   assert.match(note.scenario, /in order/);
   assert.equal("steps" in diagramOf("diagram", { isError: false, data: { ...data, shape: "usecase" } }), false, "only a scenario carries them");
+});
+
+// The example's two answers as the server gives them: the Payer is no seat, so the use case's
+// nodes hold no actor and the scenario's nodes hold nothing at all.
+const USECASE = {"shape": "usecase", "title": "Download an invoice", "mermaid": "flowchart LR\n  a0[\"fak:fa-actor <b>Payer</b>\"]\n  subgraph scope [\"system\"]\n    n0([\"<b>Download an invoice</b><br/><small>«user goal»</small>\"]):::middle\n    n1([\"Find an invoice<br/><small>«subfunction»</small>\"])\n    n0 -.->|\"includes\"| n1\n  end\n  a0 --> n0\n  n2[\"Invoice download<br/><small>«feature»</small>\"]\n  n0 -->|\"features\"| n2\n  n3{{\"<b>A copy is the invoice as issued</b><br/><small>«functional · must»</small>\"}}:::must\n  n3 -.-> n0\n  classDef middle stroke-width:2px\n  classDef must stroke-width:2px", "nodes": [{"node": "n0", "id": "01a12b01-39b2-7ea6-994a-d246d4ab6825", "title": "Download an invoice", "type": "use-case"}, {"node": "n1", "id": "01a12b01-39eb-7a27-a513-10b8e399cbc1", "title": "Find an invoice", "type": "use-case"}, {"node": "n2", "id": "01a0c25c-19f8-77ee-8656-f16c523bdc15", "title": "Invoice download", "type": "feature"}, {"node": "n3", "id": "01a12b01-3a22-74e6-b405-dd48a35f2da8", "title": "A copy is the invoice as issued", "type": "requirement"}], "links": [{"from": "n0", "to": "n1", "label": "includes"}, {"from": "a0", "to": "n0", "label": ""}, {"from": "n0", "to": "n2", "label": "features"}, {"from": "n3", "to": "n0", "label": "Applies to"}], "edges": 4, "omitted": 0, "actor": "Payer"};
+const SCENARIO = {"shape": "scenario", "title": "Download an invoice", "mermaid": "flowchart TB\n  t0([\"The payer's bookkeeping asks for the invoice of a closed billing period.\"])\n  s0[\"fak:fa-actor <b>Payer</b><br/><small>1</small> Finds the invoice on the Invoice Page, as Find an invoice says\"]\n  t0 --> s0\n  s1[\"fak:fa-actor <b>Payer</b><br/><small>2</small> Asks for a copy\"]\n  s0 --> s1\n  s2[\"fak:fa-actor <b>System</b><br/><small>3</small> Hands over the invoice as it was issued, every line and its explanation\"]\n  s1 --> s2\n  x0[\"<small>1a</small> The billing period is still open, so no invoice is issued yet<br/><i>The page says when the period closes, and the payer comes back then, so the use case ends without a copy</i>\"]:::ext\n  s0 -.-> x0\n  x1[\"<small>3a</small> A credit note has been issued against the invoice since<br/><i>The copy is still the invoice as issued, and the page names the credit note beside it</i>\"]:::ext\n  s2 -.-> x1\n  classDef ext stroke-dasharray:5 4", "nodes": [], "links": [{"from": "t0", "to": "s0", "label": "1"}, {"from": "s0", "to": "s1", "label": "2"}, {"from": "s1", "to": "s2", "label": "3"}, {"from": "s0", "to": "x0", "label": "1a"}, {"from": "s2", "to": "x1", "label": "3a"}], "edges": 5, "omitted": 0, "steps": [{"step": "1", "actor": "Payer", "action": "Finds the invoice on the Invoice Page, as Find an invoice says"}, {"step": "2", "actor": "Payer", "action": "Asks for a copy"}, {"step": "3", "actor": "System", "action": "Hands over the invoice as it was issued, every line and its explanation"}], "extensions": [{"step": "1a", "condition": "The billing period is still open, so no invoice is issued yet", "handling": "The page says when the period closes, and the payer comes back then, so the use case ends without a copy"}, {"step": "3a", "condition": "A credit note has been issued against the invoice since", "handling": "The copy is still the invoice as issued, and the page names the credit note beside it"}]};
+
+test("a scenario whose actors are no seat reaches the widget and the note, and the event carries no steps", async () => {
+  const picture = diagramOf("diagram", { isError: false, data: SCENARIO });
+  assert.ok(picture, "a scenario with no node is still a picture");
+  assert.deepEqual([picture.nodes, picture.steps.length, picture.extensions.length], [[], 3, 2]);
+  const drawing = { ...host, call: async (name, args) => (name === "diagram" ? { text: JSON.stringify(SCENARIO), isError: false, data: SCENARIO } : host.call(name, args)) };
+  const model = fakeModel([toolTurn("diagram", { shape: "scenario", id: SCENARIO.nodes[0]?.id ?? "x" }), textTurn("The payer finds the invoice.")]);
+  const { events, emit } = collect();
+  await answer({ host: drawing, model, meter: meter() }, { messages: [{ role: "user", content: "how does downloading an invoice run?" }], lang: "en" }, emit);
+  const drawn = events.filter(([e]) => e === "diagram").map(([, d]) => d);
+  assert.equal(drawn.length, 1);
+  for (const k of ["steps", "extensions", "links", "actor"]) assert.equal(k in drawn[0], false, `the event strips ${k}`);
+  const given = JSON.parse(model.requests[1].messages.at(-1).content[0].content);
+  assert.equal(given.relations[0].says, "Step 1: Payer, Finds the invoice on the Invoice Page, as Find an invoice says");
+  assert.equal(given.relations.at(-1).says, "Extension 3a departs from step 3. Condition: A credit note has been issued against the invoice since. Then: The copy is still the invoice as issued, and the page names the credit note beside it");
+  assert.equal(given.relations.length, 5);
+});
+
+test("a use case's actor that is no seat is still stated, from the answer's own field", () => {
+  const picture = diagramOf("diagram", { isError: false, data: USECASE });
+  assert.equal(picture.actor, "Payer");
+  const note = JSON.parse(diagramNote(picture));
+  assert.deepEqual(note.relations.map((r) => r.says), [
+    "Payer is the primary actor of Download an invoice",
+    "Download an invoice includes Find an invoice",
+    "Download an invoice asks something of the feature Invoice download",
+    "A copy is the invoice as issued applies to Download an invoice",
+  ]);
+  // A seat actor is stated by its link, once.
+  const seat = { ...USECASE, actor: "Billing Clerk", nodes: [...USECASE.nodes, { node: "n4", id: "s1", title: "Billing Clerk", type: "seat" }], links: USECASE.links.map((l) => (l.from === "a0" ? { ...l, from: "n4" } : l)) };
+  const said = JSON.parse(diagramNote(diagramOf("diagram", { isError: false, data: seat }))).relations.map((r) => r.says);
+  assert.equal(said.filter((s) => s.includes("primary actor")).length, 1);
+  assert.equal("actor" in diagramOf("diagram", { isError: false, data: SCENARIO }), false, "only a use case carries it");
+});
+
+test("an extension the picture left out is not stated as departing from a step", () => {
+  const data = { ...SCENARIO, extensions: [...SCENARIO.extensions, { step: "9a", condition: "Nothing", handling: "Nothing happens" }], omitted: 1 };
+  const note = JSON.parse(diagramNote(diagramOf("diagram", { isError: false, data })));
+  assert.equal(note.relations.length, 5);
+  assert.ok(!JSON.stringify(note.relations).includes("9a"));
 });

@@ -50,6 +50,7 @@ export type Diagram = {
     transitions?: Transition[];
     steps?: Step[];
     extensions?: Extension[];
+    actor?: string;
     edges?: number;
 };
 export declare const NAME_CAP = 300;
