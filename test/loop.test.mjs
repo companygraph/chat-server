@@ -864,3 +864,50 @@ test("diagramNote says each line of an organization in words, names an opening a
   assert.match(note.organization, /never relations/);
   assert.equal("organization" in JSON.parse(diagramNote({ shape: "concepts", title: "A", nodes, edges: 4, omitted: 0, links })), false);
 });
+
+// A use case's lines carry the model's word for each, and a requirement's arrow is drawn into the
+// use case it applies to, so each is said from the side the word names and never turned around.
+test("diagramNote words a use case's lines and a requirement's from the side the word names", () => {
+  const nodes = [
+    { node: "n0", id: "a", title: "Download an invoice", type: "use-case" }, { node: "n1", id: "b", title: "Find an invoice", type: "use-case" },
+    { node: "n2", id: "c", title: "Invoice download", type: "feature" }, { node: "n3", id: "d", title: "A copy is the invoice as issued", type: "requirement" },
+    { node: "n4", id: "e", title: "Billing Clerk", type: "seat" }, { node: "n5", id: "f", title: "A copy is kept", type: "rule" },
+  ];
+  const links = [{ from: "n0", to: "n1", label: "includes" }, { from: "n4", to: "n0", label: "" }, { from: "n0", to: "n2", label: "features" }, { from: "n3", to: "n0", label: "Applies to" }, { from: "n3", to: "n5", label: "follows" }];
+  const note = JSON.parse(diagramNote({ shape: "usecase", title: "Download an invoice", nodes, edges: 5, omitted: 0, links }));
+  assert.deepEqual(note.relations.map((r) => r.says), [
+    "Download an invoice includes Find an invoice",
+    "Billing Clerk is the primary actor of Download an invoice",
+    "Download an invoice asks something of the feature Invoice download",
+    "A copy is the invoice as issued applies to Download an invoice",
+    "A copy is the invoice as issued follows the rule A copy is kept",
+  ]);
+  assert.match(note.usecase, /never turned around/);
+  const held = JSON.parse(diagramNote({ shape: "requirements", title: "Invoice download", nodes, edges: 2, omitted: 0, links: [{ from: "n3", to: "n2", label: "Applies to" }, { from: "n3", to: "n5", label: "follows" }] }));
+  assert.deepEqual(held.relations.map((r) => r.says), ["A copy is the invoice as issued applies to Invoice download", "A copy is the invoice as issued follows the rule A copy is kept"]);
+  assert.match(held.usecase, /never turned around/);
+  for (const shape of ["neighborhood", "system"]) assert.equal("usecase" in JSON.parse(diagramNote({ shape, title: "A", nodes, edges: 1, omitted: 0, links: links.slice(0, 1) })), false, shape);
+});
+
+// A scenario's boxes are steps and extensions, no entity, so its relations are its steps in order
+// and its extensions after them, each with the sentence that states it, as a lifecycle's are its transitions.
+test("diagramOf keeps a scenario's steps and extensions, and diagramNote states each in order", () => {
+  const data = {
+    shape: "scenario", title: "Download an invoice", mermaid: "flowchart TB", nodes: [{ node: "s1", id: "e", title: "Billing Clerk", type: "seat" }], edges: 5, omitted: 1,
+    links: [{ from: "t0", to: "s0", label: "1" }, { from: "s0", to: "s1", label: "2" }],
+    steps: [{ step: "1", actor: "Payer", action: "Finds the invoice" }, { step: "2", actor: "Billing Clerk", action: "Asks for a copy" }, { step: 3 }],
+    extensions: [{ step: "1a", condition: "The period is still open", handling: "The page says when it closes" }, { step: "9a" }],
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.deepEqual(picture.steps, data.steps.slice(0, 2));
+  assert.deepEqual(picture.extensions, data.extensions.slice(0, 1));
+  assert.deepEqual(picture.links, [], "a step is no node, so no link joins two");
+  const note = JSON.parse(diagramNote(picture));
+  assert.deepEqual(note.relations, [
+    { step: "1", actor: "Payer", action: "Finds the invoice", says: "Step 1: Payer, Finds the invoice" },
+    { step: "2", actor: "Billing Clerk", action: "Asks for a copy", says: "Step 2: Billing Clerk, Asks for a copy" },
+    { step: "1a", condition: "The period is still open", handling: "The page says when it closes", says: "Extension 1a departs from step 1 where The period is still open: The page says when it closes" },
+  ]);
+  assert.match(note.scenario, /in order/);
+  assert.equal("steps" in diagramOf("diagram", { isError: false, data: { ...data, shape: "usecase" } }), false, "only a scenario carries them");
+});
