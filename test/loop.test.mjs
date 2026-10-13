@@ -728,6 +728,37 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   assert.deepEqual(small.shared, []);
 });
 
+// The check reads an answer claim by claim, and a sentence that joins five relations of the
+// schemas reads as supported with a wrong one among them. A list item is a claim of its own, so
+// the note asks for the relations of the schemas as a list, one to an item, and of no other
+// picture.
+test("the note for a picture of the schemas asks for a list of at most six items, one relation to an item", () => {
+  const nodes = [{ node: "n0", id: "software/aggregate", title: "aggregate", type: "schema" }, { node: "n1", id: "software/bounded-context", title: "bounded-context", type: "schema" }];
+  const data = { shape: "schema", title: "software", mermaid: "classDiagram", nodes, edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "nested-in" }], everyType: [], model: { core: "0.69.0" }, unit: "software", units: [{ unit: "core", types: 37 }, { unit: "software", types: 5 }] };
+  /** @param {object} d */
+  const of = (d) => JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: d }), edges: 1 }));
+  const unit = of(data), type = of({ ...data, title: "aggregate", unit: undefined }), whole = of({ ...data, title: null, unit: undefined });
+  for (const note of [unit, type, whole]) {
+    assert.match(note.schemas, /a list takes the place of the one or two sentences/);
+    assert.match(note.schemas, /a Markdown list of at most six items, never every relation/);
+    assert.match(note.schemas, /An item states one relation and no more: /);
+    assert.match(note.schemas, /never two joined by and, a comma or a semicolon; a relation that has no says is not listed/);
+    assert.match(note.schemas, /keeping who declares and who is named as the sentence has them/);
+    assert.doesNotMatch(note.schemas, /two or three sentences/);
+  }
+  // Only a unit's picture has the groups, so only its line offers their sentences as items.
+  assert.match(unit.schemas, /no more: one sentence of owns or shared, or one relation's says,/);
+  for (const note of [type, whole]) {
+    assert.match(note.schemas, /no more: one relation's says,/);
+    assert.doesNotMatch(note.schemas, /owns or shared/);
+  }
+  // Every other picture keeps its sentences.
+  for (const shape of ["concepts", "process", "neighborhood", "context", "aggregate", "organization", "system"]) {
+    const other = diagramNote({ shape, title: "A", mermaid: "", nodes: nodes.map((n) => ({ ...n, type: "concept" })), edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "x" }] });
+    assert.doesNotMatch(other, /Markdown list/, shape);
+  }
+});
+
 // A meta-model of more types than one picture holds is drawn a unit at a time, core or one pack,
 // and the host says which unit it drew and which there are. The note carries both, so the answer
 // says what is shown and what can be shown next, and the widget needs neither.
