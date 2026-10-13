@@ -686,11 +686,12 @@ test("a picture of the schemas says each reference from the type that declares i
   assert.equal("says" in other.relations[0], false);
 });
 
-// An answer says a picture of the schemas in two or three sentences, so it groups: these types
-// nest in that one, those carry decisions. Grouped by the model, a type was put in a group it is
-// not in: a feature-design nested in a bounded-context it only names, decisions on a type that
-// declares none. A unit's picture draws every nesting and every reference of the unit's own
-// types, so the note groups them itself, each group closed, and the answer has them to repeat.
+// An answer about the schemas groups: these types nest in that one, those carry decisions.
+// Grouped by the model, a type was put in a group it is not in: a feature-design nested in a
+// bounded-context it only names, decisions on a type that declares none. A unit's picture draws
+// every nesting and every reference of the unit's own types, so the note groups them itself.
+// Each group is closed, which the note's line says once: a sentence carries no closing words,
+// since an answer copies it as an item of its list.
 test("a picture of one unit of the schemas groups its own types by owner and by a field several declare, each group closed", () => {
   const nodes = [
     ["software", "aggregate"], ["software", "bounded-context"], ["software", "concept-design"], ["software", "domain-event"], ["software", "feature-design"],
@@ -710,11 +711,11 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   const data = { shape: "schema", title: "software", mermaid: "classDiagram", nodes, edges: 9, omitted: 0, links, everyType: [], model: { core: "0.69.0" }, unit: "software", units: [{ unit: "core", types: 37 }, { unit: "software", types: 5 }] };
   const note = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data }), edges: 9 }));
   assert.deepEqual(note.owns, [
-    "bounded-context owns aggregate, concept-design and domain-event, and no other type of this unit",
+    "bounded-context owns aggregate, concept-design and domain-event",
     "bounded-context and feature-design are nested in no type",
   ]);
   // refines is declared by two types to two different types, which is no group.
-  assert.deepEqual(note.shared, ["aggregate, bounded-context and feature-design each declare the field decisions, which names decision, and no other type of this unit does"]);
+  assert.deepEqual(note.shared, ["aggregate, bounded-context and feature-design each declare the field decisions, which names decision"]);
   assert.match(note.schemas, /group them as owns and shared do/);
   // One type's picture draws that type's references alone, so nothing in it is closed.
   const narrowed = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { ...data, title: "aggregate", unit: undefined } }), edges: 9 }));
@@ -723,7 +724,7 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   assert.doesNotMatch(narrowed.schemas, /owns and shared/);
   // A unit with one top-level type and no shared field says the one and leaves shared empty.
   const small = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { ...data, nodes: nodes.slice(0, 2), links: [links[6]] } }), edges: 1 }));
-  assert.deepEqual(small.owns, ["bounded-context owns aggregate, and no other type of this unit", "bounded-context is nested in no type"]);
+  assert.deepEqual(small.owns, ["bounded-context owns aggregate", "bounded-context is nested in no type"]);
   assert.deepEqual(small.shared, []);
 });
 
