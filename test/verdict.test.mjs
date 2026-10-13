@@ -130,11 +130,33 @@ test("German dates and common abbreviations do not end a sentence, and a questio
   assert.deepEqual(claimsOf("Dr. Smith led it. Would you like to know more?", "en").map((c) => c.text), ["Dr. Smith led it."]);
 });
 
-test("a tilde fence, a bold-only line and a quote's marker are not claims, and two rounds' sentences part", () => {
-  const text = "~~~\nnot = a claim\n~~~\n\n**Robert Blust**\n\n> Quoted fact.\n\nLooking.Robert Blust is it.";
+test("a tilde fence, a bold-only line and a quote's marker are not claims", () => {
+  const text = "~~~\nnot = a claim\n~~~\n\n**Robert Blust**\n\n> Quoted fact.\n\nRobert Blust is it.";
   const claims = claimsOf(text, "en");
-  assert.deepEqual(claims.map((c) => c.text), ["Quoted fact.", "Looking.", "Robert Blust is it."]);
+  assert.deepEqual(claims.map((c) => c.text), ["Quoted fact.", "Robert Blust is it."]);
   for (const c of claims) assert.equal(text.slice(c.from, c.to), c.text);
+});
+
+// A reference a section's column draws is named Section.Column, a stop between a lowercase
+// letter and a capital with no space, and an answer about the schemas writes such names. The
+// answer is one round's text, so a stop with no space after it ends no sentence.
+test("a name written with a stop inside it stays in its sentence", () => {
+  const emits = "An aggregate emits domain-event entries through \"Handled commands.Emits\", while a domain-event is emitted by an aggregate.";
+  const terms = "It relates to itself through Attributes.Term and Relations.Concept.";
+  const text = `${emits} ${terms}`;
+  const claims = claimsOf(text, "en");
+  assert.deepEqual(claims.map((c) => c.text), [emits, terms]);
+  for (const c of claims) assert.equal(text.slice(c.from, c.to), c.text);
+});
+
+// A version ends in a number and a stop, as an ordinal does, and an answer about the schemas
+// names the core's version at the end of its first sentence.
+test("a version number ends its sentence, and an ordinal still does not", () => {
+  const text = "This is the software pack, built on core 0.69.0. It centers on bounded-context.";
+  const claims = claimsOf(text, "en");
+  assert.deepEqual(claims.map((c) => c.text), ["This is the software pack, built on core 0.69.0.", "It centers on bounded-context."]);
+  for (const c of claims) assert.equal(text.slice(c.from, c.to), c.text);
+  assert.deepEqual(claimsOf("Die Version ist 1.2. Sie gilt seit dem 4. Mai 2012.", "de").map((c) => c.text), ["Die Version ist 1.2.", "Sie gilt seit dem 4. Mai 2012."]);
 });
 
 test("a title inside inline code is not a name", () => {
