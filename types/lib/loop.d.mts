@@ -74,6 +74,28 @@ export declare function diagramOf(name: string, r: {
     isError?: boolean;
     data?: any;
 } | null | undefined): Diagram | null;
+/**
+ * The entities a question rests on, read off get_entity's answer: each `Rests on` reference
+ * once, in the answer's order. Empty for anything that is no question, for a question mastered
+ * on its own page, for fetch, which carries no references, and for a refusal.
+ * @param {string} name
+ * @param {{ isError?: boolean; data?: any } | null | undefined} r
+ * @returns {{ id: string; title: string; type: string | null }[]}
+ */
+export declare function restsOf(name: string, r: {
+    isError?: boolean;
+    data?: any;
+} | null | undefined): {
+    id: string;
+    title: string;
+    type: string | null;
+}[];
+/** @param {{ id: string; title: string; type: string | null }[]} rests */
+export declare const restsNote: (rests: {
+    id: string;
+    title: string;
+    type: string | null;
+}[]) => string;
 /** @param {Diagram} d */
 export declare const diagramNote: (d: Diagram) => string;
 /**
