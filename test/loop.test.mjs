@@ -730,6 +730,27 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   assert.deepEqual(small.shared, []);
 });
 
+// A row of what every type declares gets its sentence from its field and its multiplicity. One
+// whose multiplicity is in no form the note reads has none, and a line asking for a sentence
+// that is not there would send the model back to its own words.
+test("a row of what every type declares has its sentence where its multiplicity reads, and the line asks for it only then", () => {
+  const nodes = [{ node: "n0", id: "core/phase", title: "phase", type: "schema" }, { node: "n1", id: "core/process", title: "process", type: "schema" }];
+  /** @param {object[]} everyType */
+  const of = (everyType) => JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { shape: "schema", title: null, mermaid: "classDiagram", nodes, edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "nested-in" }], everyType, model: { core: "0.69.0" } } }), edges: 1 }));
+  const column = of([{ via: "Handled commands.Emits", to: "domain-event", multiplicity: "0..*" }]);
+  assert.equal(column.everyType[0].says, "every type also declares the column Emits of its section Handled commands, which names any number of domain-event");
+  assert.match(column.schemas, /say it once, in a sentence of its own, as its says states it\./);
+  const unread = of([{ via: "source", to: "source", multiplicity: "*" }]);
+  assert.deepEqual(unread.everyType, [{ via: "source", to: "source", multiplicity: "*" }]);
+  assert.match(unread.schemas, /say it once, in a sentence of its own\./);
+  assert.doesNotMatch(unread.schemas, /as its says states it\. This|in a sentence of its own, as its says/);
+  // One row without its sentence is enough for the line not to promise one.
+  const mixed = of([{ via: "source", to: "source", multiplicity: "1" }, { via: "owner", to: "seat", multiplicity: "*" }]);
+  assert.equal(mixed.everyType[0].says, "every type also declares the field source, which names exactly one source");
+  assert.equal("says" in mixed.everyType[1], false);
+  assert.doesNotMatch(mixed.schemas, /in a sentence of its own, as its says/);
+});
+
 // The check reads an answer claim by claim, and a sentence that joins five relations of the
 // schemas reads as supported with a wrong one among them. A list item is a claim of its own, so
 // the note asks for the relations of the schemas as a list, one to an item, and of no other
