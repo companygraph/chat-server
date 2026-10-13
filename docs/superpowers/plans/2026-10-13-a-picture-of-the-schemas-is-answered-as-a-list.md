@@ -30,6 +30,10 @@
 - §4 found every item stating one relation. With the closing words gone from the group sentences, the text of this plan had 4 of 120 items join two relations and 3 of 20 answers repeat a group in a sentence after the list, in a scratch copy on 2026-10-13; the check still marked a wrong item planted in 20 of 20 and none of 176 claims as written. So the gate of Task 3 is on what a reader and the check find, and the two counts of form are reported, not gated.
 - The spec is silent on `docs/design/prompt.md`. The page maps what rides outside the system prompt, so it gains one paragraph on the picture's note in Task 2.
 
+## What the build added
+
+The review of the whole branch added what the tasks below do not hold: a sentence on each row of `everyType`, since the model's own wording of a true sentence on what every type declares was marked by the check, and a second passage on the design page where it describes the prompt's rule for a picture. On the owner's word it also added a clause to that rule in `lib/prompt.mjs`, which names the list, so the first of the Global Constraints below no longer holds as written: the note and one clause of the prompt change. The spec's §2 and §4 say why and what was measured.
+
 ## Review Focus
 
 - A picture of one type, or of the whole, has no `owns` and no `shared`: its line must not offer their sentences as items. Pinned by the test of Task 2.
