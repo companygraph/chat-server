@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
@@ -645,6 +646,39 @@ test("a picture of the schemas keeps what every other type declares and the core
   assert.deepEqual(note.nodes, [{ title: "phase", type: "schema" }, { title: "process", type: "schema" }]);
   assert.deepEqual(note.relations, [{ from: "phase", fromType: "schema", to: "process", toType: "schema", label: "nested-in" }]);
   assert.equal("everyType" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
+});
+
+// A meta-model of more types than one picture holds is drawn a unit at a time, core or one pack,
+// and the host says which unit it drew and which there are. The note carries both, so the answer
+// says what is shown and what can be shown next, and the widget needs neither.
+test("a picture of one unit of the schemas says which unit it is and names the others, in the note alone", () => {
+  const nodes = [{ node: "n0", id: "core/phase", title: "phase", type: "schema" }, { node: "n1", id: "core/process", title: "process", type: "schema" }];
+  const data = {
+    shape: "schema", title: "core", mermaid: "classDiagram", nodes, edges: 1, omitted: 3, links: [{ from: "n0", to: "n1", label: "nested-in" }], everyType: [], model: { core: "0.69.0" },
+    unit: "core", units: [{ unit: "core", types: 37 }, { unit: "landscape", types: 5 }, { unit: 7 }, { unit: "software" }],
+  };
+  const picture = diagramOf("diagram", { isError: false, data });
+  assert.equal(picture.unit, "core");
+  assert.deepEqual(picture.units, [{ unit: "core", types: 37 }, { unit: "landscape", types: 5 }]);
+  const note = JSON.parse(diagramNote({ ...picture, edges: 1 }));
+  assert.equal(note.unit, "core");
+  assert.deepEqual(note.units, [{ unit: "core", types: 37 }, { unit: "landscape", types: 5 }]);
+  assert.match(note.schemas, /draws one unit of the meta-model/);
+  assert.match(note.schemas, /shown next/);
+  // A picture of the whole, or of one type, names no unit and its note says nothing of one.
+  const whole = diagramOf("diagram", { isError: false, data: { ...data, title: null, unit: undefined } });
+  assert.equal("unit" in whole, false);
+  const wholeNote = JSON.parse(diagramNote({ ...whole, edges: 1 }));
+  assert.equal("unit" in wholeNote, false);
+  assert.doesNotMatch(wholeNote.schemas, /one unit of the meta-model/);
+  assert.equal("units" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
+  // The event the widget gets is the picture and nothing the note alone needs.
+  assert.match(fs.readFileSync(new URL("../lib/loop.mjs", import.meta.url), "utf8"), /const \{ links, everyType, core, unit, units, transitions, steps, extensions, actor, \.\.\.event \} = picture; emit\("diagram", event\);/);
+});
+
+test("the diagram rule sends core or a pack to the schema shape by unit, where the tool takes one", () => {
+  assert.match(DIAGRAM_RULE, /one who names core or a pack[^;]*is shown shape schema with unit where the tool takes one/);
+  assert.match(DIAGRAM_RULE, /never with type/);
 });
 
 test("a type in a picture of the schemas is no name the answer links", () => {
