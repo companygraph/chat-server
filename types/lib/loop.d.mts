@@ -47,6 +47,11 @@ export type Diagram = {
         multiplicity: string;
     }[];
     core?: string | null;
+    unit?: string;
+    units?: {
+        unit: string;
+        types: number;
+    }[];
     transitions?: Transition[];
     steps?: Step[];
     extensions?: Extension[];
