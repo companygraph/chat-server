@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote } from "../lib/loop.mjs";
+import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
@@ -79,6 +79,66 @@ test("a question that needs two rounds gets them, and the entity fetched is cite
   assert.equal(done.spent, r.spent);
   assert.equal(done.spent, 3 * (1000 + 500));
   assert.equal((await m.state()).dayTokens, done.spent);
+});
+
+// A question of the model's says where its answer lies: its page names the entities it rests on
+// and gives none of what they say. Read alone it looks like an answer, and the chat wrote one
+// from it without opening a page. So the question's own tool answer ends by naming each page it
+// rests on that this message has not read, and asks for them before the answer is written.
+const INVOICE_QUESTION = idOfAddress("questions/how-do-i-find-out-why-a-line-is-on-my-invoice");
+const CHARGE = idOfAddress("features/charge-explanation"), PRICING = idOfAddress("features/pricing-rules");
+const REVENUE_QUESTION = idOfAddress("questions/does-beacon-systems-publish-its-revenue");
+
+test("a question's answer names the pages it rests on, and nothing else has any", async () => {
+  const q = await host.call("get_entity", { id: INVOICE_QUESTION });
+  assert.deepEqual(restsOf("get_entity", q).map((r) => r.id).sort(), [CHARGE, PRICING].sort());
+  assert.ok(restsOf("get_entity", q).every((r) => r.type === "feature" && typeof r.title === "string" && r.title.length > 0));
+  assert.deepEqual(restsOf("get_entity", await host.call("get_entity", { id: REVENUE_QUESTION })), [], "a question mastered on its own page rests on none");
+  assert.deepEqual(restsOf("get_entity", await host.call("get_entity", { id: CHARGE })), [], "a page that is no question");
+  assert.deepEqual(restsOf("fetch", q), [], "only the structured answer carries the references");
+  assert.deepEqual(restsOf("get_entity", { isError: true, data: q.data }), []);
+  assert.deepEqual(restsOf("get_entity", null), []);
+});
+
+test("the note names each page by title, type and id, and says the question's page is not the answer", () => {
+  const note = restsNote([{ id: "a1", title: "Charge explanation", type: "feature" }, { id: "b2", title: "Pricing rules", type: null }]);
+  assert.match(note, /not the answer/);
+  assert.match(note, /get_entity/);
+  assert.match(note, /Charge explanation \(feature\), id a1; Pricing rules, id b2/);
+  assert.equal(restsNote([]), "");
+});
+
+test("after a question is read, the model is told which of its pages it has not read yet", async () => {
+  const model = fakeModel([
+    toolTurn("get_entity", { id: INVOICE_QUESTION }),
+    toolTurn("get_entity", { id: CHARGE }),
+    toolTurn("get_entity", { id: INVOICE_QUESTION }),
+    textTurn("From the charge explanation."),
+  ]);
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "why is this line on my invoice?" }], lang: "en" }, emit);
+  const given = (i) => model.requests[i].messages.at(-1).content.find((c) => c.type === "tool_result").content;
+  // Read first, the question names both pages, after its own answer and in the same block.
+  assert.ok(given(1).includes(`id ${CHARGE}`) && given(1).includes(`id ${PRICING}`), given(1).slice(-400));
+  assert.ok(given(1).indexOf("not the answer") > given(1).indexOf(INVOICE_QUESTION), "the note follows the answer it is about");
+  // A page that is no question carries no note.
+  assert.ok(!given(2).includes("not the answer"));
+  // Read again once one page is read, it names only the other.
+  assert.ok(given(3).includes(`id ${PRICING}`) && !given(3).includes(`id ${CHARGE}`), given(3).slice(-400));
+  // The note stays where the naming note and the tool's answer already stand.
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, nameNote("why is this line on my invoice?"));
+  assert.equal(model.requests[1].messages.at(-1).content.at(-2).type, "tool_result");
+  assert.deepEqual(events.filter(([e]) => e === "cite").map(([, d]) => d.id), [INVOICE_QUESTION, CHARGE]);
+});
+
+test("a question read in the last round a tool may be called in carries no note, since no page can follow it", async () => {
+  const script = [];
+  for (let i = 0; i < MAX_ROUNDS - 1; i++) script.push(toolTurn("list_types", {}));
+  script.push(toolTurn("get_entity", { id: INVOICE_QUESTION }), textTurn("ok"));
+  const model = fakeModel(script);
+  await answer({ host, model, meter: meter() }, { messages: [{ role: "user", content: "q" }], lang: "en" }, collect().emit);
+  const last = model.requests.at(-1).messages.at(-1).content.find((c) => c.type === "tool_result").content;
+  assert.ok(last.includes(INVOICE_QUESTION) && !last.includes("not the answer"));
 });
 
 test("a fifth round is not made: the last request forbids a tool call", async () => {
