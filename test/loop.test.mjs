@@ -640,9 +640,11 @@ test("a picture of the schemas keeps what every other type declares and the core
   assert.equal(picture.core, "0.45.0");
   assert.equal(picture.nodes[0].url, nodes[0].url, "the widget links a type by its url");
   const note = JSON.parse(diagramNote({ ...picture, edges: 1 }));
-  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  // The sentence is given ready-made, as a relation's is: written by the model as "every type of
+  // this unit also declares a field to exactly one source", it was true and the check marked it.
+  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1", says: "every type also declares the field source, which names exactly one source" }]);
   assert.match(note.schemas, /core 0\.45\.0/);
-  assert.match(note.schemas, /say it once/);
+  assert.match(note.schemas, /say it once, in a sentence of its own, as its says states it/);
   assert.deepEqual(note.nodes, [{ title: "phase", type: "schema" }, { title: "process", type: "schema" }]);
   assert.deepEqual(note.relations, [{ from: "phase", to: "process", label: "nested-in", says: "every phase is nested in one process, its owner" }]);
   assert.equal("everyType" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
