@@ -216,6 +216,13 @@ test("the picture sentence follows the Markdown rule where the host draws, and i
   assert.match(DIAGRAM_RULE, /Where diagram refuses for any other reason, answer in words and a table/);
 });
 
+// The note on a picture of the schemas asks for a short list, where this rule asks for a
+// sentence or two and the Markdown rule keeps a list for steps. The rule names the exception,
+// so the prompt and the note ask for the same thing and neither wins by being read last.
+test("the diagram rule names the list a picture of the schemas is answered with", () => {
+  assert.match(DIAGRAM_RULE, /Then write a sentence or two naming what it drew by title, or for shape schema the one sentence and the short list the tool's note asks for, with no table of it,/);
+});
+
 // An English question in German word order was answered in German on the companygraph.io host;
 // both the system prompt and the note sent with the tools' answers say the words decide.
 test("the language rule and the name note say a learner's grammar does not change the language", () => {

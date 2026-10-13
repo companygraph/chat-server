@@ -640,9 +640,11 @@ test("a picture of the schemas keeps what every other type declares and the core
   assert.equal(picture.core, "0.45.0");
   assert.equal(picture.nodes[0].url, nodes[0].url, "the widget links a type by its url");
   const note = JSON.parse(diagramNote({ ...picture, edges: 1 }));
-  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1" }]);
+  // The sentence is given ready-made, as a relation's is: written by the model as "every type of
+  // this unit also declares a field to exactly one source", it was true and the check marked it.
+  assert.deepEqual(note.everyType, [{ via: "source", to: "source", multiplicity: "1", says: "every type also declares the field source, which names exactly one source" }]);
   assert.match(note.schemas, /core 0\.45\.0/);
-  assert.match(note.schemas, /say it once/);
+  assert.match(note.schemas, /say it once, in a sentence of its own, as its says states it/);
   assert.deepEqual(note.nodes, [{ title: "phase", type: "schema" }, { title: "process", type: "schema" }]);
   assert.deepEqual(note.relations, [{ from: "phase", to: "process", label: "nested-in", says: "every phase is nested in one process, its owner" }]);
   assert.equal("everyType" in diagramOf("diagram", { isError: false, data: { ...data, shape: "concepts" } }), false, "only the schemas carry it");
@@ -686,11 +688,12 @@ test("a picture of the schemas says each reference from the type that declares i
   assert.equal("says" in other.relations[0], false);
 });
 
-// An answer says a picture of the schemas in two or three sentences, so it groups: these types
-// nest in that one, those carry decisions. Grouped by the model, a type was put in a group it is
-// not in: a feature-design nested in a bounded-context it only names, decisions on a type that
-// declares none. A unit's picture draws every nesting and every reference of the unit's own
-// types, so the note groups them itself, each group closed, and the answer has them to repeat.
+// An answer about the schemas groups: these types nest in that one, those carry decisions.
+// Grouped by the model, a type was put in a group it is not in: a feature-design nested in a
+// bounded-context it only names, decisions on a type that declares none. A unit's picture draws
+// every nesting and every reference of the unit's own types, so the note groups them itself.
+// Each group is closed, which the note's line says once: a sentence carries no closing words,
+// since an answer copies it as an item of its list.
 test("a picture of one unit of the schemas groups its own types by owner and by a field several declare, each group closed", () => {
   const nodes = [
     ["software", "aggregate"], ["software", "bounded-context"], ["software", "concept-design"], ["software", "domain-event"], ["software", "feature-design"],
@@ -710,11 +713,11 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   const data = { shape: "schema", title: "software", mermaid: "classDiagram", nodes, edges: 9, omitted: 0, links, everyType: [], model: { core: "0.69.0" }, unit: "software", units: [{ unit: "core", types: 37 }, { unit: "software", types: 5 }] };
   const note = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data }), edges: 9 }));
   assert.deepEqual(note.owns, [
-    "bounded-context owns aggregate, concept-design and domain-event, and no other type of this unit",
+    "bounded-context owns aggregate, concept-design and domain-event",
     "bounded-context and feature-design are nested in no type",
   ]);
   // refines is declared by two types to two different types, which is no group.
-  assert.deepEqual(note.shared, ["aggregate, bounded-context and feature-design each declare the field decisions, which names decision, and no other type of this unit does"]);
+  assert.deepEqual(note.shared, ["aggregate, bounded-context and feature-design each declare the field decisions, which names decision"]);
   assert.match(note.schemas, /group them as owns and shared do/);
   // One type's picture draws that type's references alone, so nothing in it is closed.
   const narrowed = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { ...data, title: "aggregate", unit: undefined } }), edges: 9 }));
@@ -723,8 +726,60 @@ test("a picture of one unit of the schemas groups its own types by owner and by 
   assert.doesNotMatch(narrowed.schemas, /owns and shared/);
   // A unit with one top-level type and no shared field says the one and leaves shared empty.
   const small = JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { ...data, nodes: nodes.slice(0, 2), links: [links[6]] } }), edges: 1 }));
-  assert.deepEqual(small.owns, ["bounded-context owns aggregate, and no other type of this unit", "bounded-context is nested in no type"]);
+  assert.deepEqual(small.owns, ["bounded-context owns aggregate", "bounded-context is nested in no type"]);
   assert.deepEqual(small.shared, []);
+});
+
+// A row of what every type declares gets its sentence from its field and its multiplicity. One
+// whose multiplicity is in no form the note reads has none, and a line asking for a sentence
+// that is not there would send the model back to its own words.
+test("a row of what every type declares has its sentence where its multiplicity reads, and the line asks for it only then", () => {
+  const nodes = [{ node: "n0", id: "core/phase", title: "phase", type: "schema" }, { node: "n1", id: "core/process", title: "process", type: "schema" }];
+  /** @param {object[]} everyType */
+  const of = (everyType) => JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: { shape: "schema", title: null, mermaid: "classDiagram", nodes, edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "nested-in" }], everyType, model: { core: "0.69.0" } } }), edges: 1 }));
+  const column = of([{ via: "Handled commands.Emits", to: "domain-event", multiplicity: "0..*" }]);
+  assert.equal(column.everyType[0].says, "every type also declares the column Emits of its section Handled commands, which names any number of domain-event");
+  assert.match(column.schemas, /say it once, in a sentence of its own, as its says states it\./);
+  const unread = of([{ via: "source", to: "source", multiplicity: "*" }]);
+  assert.deepEqual(unread.everyType, [{ via: "source", to: "source", multiplicity: "*" }]);
+  assert.match(unread.schemas, /say it once, in a sentence of its own\./);
+  assert.doesNotMatch(unread.schemas, /as its says states it\. This|in a sentence of its own, as its says/);
+  // One row without its sentence is enough for the line not to promise one.
+  const mixed = of([{ via: "source", to: "source", multiplicity: "1" }, { via: "owner", to: "seat", multiplicity: "*" }]);
+  assert.equal(mixed.everyType[0].says, "every type also declares the field source, which names exactly one source");
+  assert.equal("says" in mixed.everyType[1], false);
+  assert.doesNotMatch(mixed.schemas, /in a sentence of its own, as its says/);
+});
+
+// The check reads an answer claim by claim, and a sentence that joins five relations of the
+// schemas reads as supported with a wrong one among them. A list item is a claim of its own, so
+// the note asks for the relations of the schemas as a list, one to an item, and of no other
+// picture.
+test("the note for a picture of the schemas asks for a list of at most six items, one relation to an item", () => {
+  const nodes = [{ node: "n0", id: "software/aggregate", title: "aggregate", type: "schema" }, { node: "n1", id: "software/bounded-context", title: "bounded-context", type: "schema" }];
+  const data = { shape: "schema", title: "software", mermaid: "classDiagram", nodes, edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "nested-in" }], everyType: [], model: { core: "0.69.0" }, unit: "software", units: [{ unit: "core", types: 37 }, { unit: "software", types: 5 }] };
+  /** @param {object} d */
+  const of = (d) => JSON.parse(diagramNote({ ...diagramOf("diagram", { isError: false, data: d }), edges: 1 }));
+  const unit = of(data), type = of({ ...data, title: "aggregate", unit: undefined }), whole = of({ ...data, title: null, unit: undefined });
+  for (const note of [unit, type, whole]) {
+    assert.match(note.schemas, /a list takes the place of the one or two sentences/);
+    assert.match(note.schemas, /a Markdown list of at most six items, never every relation/);
+    assert.match(note.schemas, /An item states one relation and no more: /);
+    assert.match(note.schemas, /never two joined by and, a comma or a semicolon; a relation that has no says is not listed/);
+    assert.match(note.schemas, /keeping who declares and who is named as the sentence has them/);
+    assert.doesNotMatch(note.schemas, /two or three sentences/);
+  }
+  // Only a unit's picture has the groups, so only its line offers their sentences as items.
+  assert.match(unit.schemas, /no more: one sentence of owns or shared, or one relation's says,/);
+  for (const note of [type, whole]) {
+    assert.match(note.schemas, /no more: one relation's says,/);
+    assert.doesNotMatch(note.schemas, /owns or shared/);
+  }
+  // Every other picture keeps its sentences.
+  for (const shape of ["concepts", "process", "neighborhood", "context", "aggregate", "organization", "system"]) {
+    const other = diagramNote({ shape, title: "A", mermaid: "", nodes: nodes.map((n) => ({ ...n, type: "concept" })), edges: 1, omitted: 0, links: [{ from: "n0", to: "n1", label: "x" }] });
+    assert.doesNotMatch(other, /Markdown list/, shape);
+  }
 });
 
 // A meta-model of more types than one picture holds is drawn a unit at a time, core or one pack,
