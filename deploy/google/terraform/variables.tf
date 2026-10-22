@@ -108,4 +108,8 @@ variable "user_month_tokens" {
     condition     = var.sign_in == null || var.user_month_tokens != null
     error_message = "user_month_tokens is required with sign_in."
   }
+  validation {
+    condition     = var.user_month_tokens == null ? true : var.user_month_tokens > 0 && var.user_month_tokens == floor(var.user_month_tokens)
+    error_message = "user_month_tokens is a positive whole number."
+  }
 }

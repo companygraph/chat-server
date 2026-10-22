@@ -46,7 +46,7 @@ resource "google_cloud_run_v2_service" "chat" {
     max_instance_request_concurrency = 20
     # A message is at most five model calls of sixty seconds each, and a request cut off part way
     # through one is a visitor left with half an answer. A signed-in reader may choose a model
-    # that thinks longer, so the limit is three times the others'.
+    # whose calls run longer, so with sign_in the limit rises to fifteen minutes.
     timeout = var.sign_in == null ? "300s" : "900s"
     scaling {
       min_instance_count = 0

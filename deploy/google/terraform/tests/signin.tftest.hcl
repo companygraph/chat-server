@@ -46,3 +46,12 @@ run "no_sign_in_makes_no_secret" {
     error_message = "without sign_in there is no reader secret."
   }
 }
+
+run "user_month_must_be_positive_whole" {
+  command         = plan
+  expect_failures = [var.user_month_tokens]
+  variables {
+    sign_in           = { issuer = "https://id.example.test", project_id = "1", org_id = "2" }
+    user_month_tokens = 1.5
+  }
+}

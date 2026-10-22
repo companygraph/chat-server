@@ -110,6 +110,7 @@ test("signInChecked: each wrong sign_in field is named, unknown keys refused", (
   assert.deepEqual(with_({ ...signIn, role_prefix: "" }), ["sign_in.role_prefix is a non-empty string"]);
   assert.deepEqual(with_({ ...signIn, orgId: "1" }), ["orgId is not a field of sign_in"]);
   assert.deepEqual(with_("https://id.example.test"), ["sign_in is an object"]);
+  assert.deepEqual(with_(null), ["sign_in is an object"]);
 });
 
 test("signInNeedsUserMonth: user_month_tokens is a positive whole number, with sign_in only", () => {
@@ -119,5 +120,6 @@ test("signInNeedsUserMonth: user_month_tokens is a positive whole number, with s
 });
 
 test("signInNotOnAzure: sign_in is for a chat on Google", () => {
-  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn, user_month_tokens: 100 }, "azure"), ["sign_in is for a chat on Google"]);
+  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn, user_month_tokens: 100 }, "azure"), ["sign_in is for a chat on Google", "user_month_tokens is for a chat on Google"]);
+  assert.deepEqual(chatProblems({ ...azureChat, user_month_tokens: 100 }, "azure"), ["user_month_tokens is for a chat on Google"]);
 });

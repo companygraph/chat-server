@@ -65,7 +65,7 @@ export function federationProblems(c, platform = "google") {
 
 // The answer check runs on Google alone in this release: the Azure module holds no secret by
 // design, so TypeSafe's key has nowhere to come from there.
-const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold", "sign_in"];
+const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold", "sign_in", "user_month_tokens"];
 const AZURE_ONLY = ["storage_account", "app_host", "dns_ready", "questions_workspace_id", "analyst_client_id"];
 
 // chat.json's sign_in, checked by form for the same reason as the federation: Terraform drops a key
