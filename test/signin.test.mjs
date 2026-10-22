@@ -80,9 +80,14 @@ test("signedOutSaysNothingOfTheToken", async () => {
 });
 
 test("roleOfThisSite", async () => {
-  const reader = await signInVerifier(SIGN_IN, { jwks }).reader(`Bearer ${await token({ [ROLES]: { opus: { [SITE_ORG]: "blust.ch" } } })}`);
-  assert.equal(reader?.sub, "reader-1");
-  assert.deepEqual([...(reader?.models ?? [])].sort(), ["claude-opus-5-5", "claude-sonnet-5"]);
+  const v = signInVerifier(SIGN_IN, { jwks });
+  for (const [role, id] of [["sonnet-5-5", "claude-sonnet-5-5"], ["opus", "claude-opus-5-5"], ["fable", "claude-fable-5-1"], ["haiku", "claude-haiku-5-5"]]) {
+    const reader = await v.reader(`Bearer ${await token({ [ROLES]: { [role]: { [SITE_ORG]: "blust.ch" } } })}`);
+    assert.equal(reader?.sub, "reader-1");
+    assert.deepEqual([...(reader?.models ?? [])].sort(), [id, "claude-sonnet-5"].sort(), role);
+  }
+  const both = await v.reader(`Bearer ${await token({ [ROLES]: { opus: { [SITE_ORG]: "blust.ch" }, haiku: { [SITE_ORG]: "blust.ch" } } })}`);
+  assert.deepEqual([...(both?.models ?? [])].sort(), ["claude-haiku-5-5", "claude-opus-5-5", "claude-sonnet-5"]);
 });
 
 test("roleOfAnotherSite", async () => {
@@ -115,6 +120,11 @@ test("emptySubSignedOut", async () => {
     const t = await new SignJWT(claims).setProtectedHeader({ alg: "RS256", kid: "k1" }).setIssuer(ISSUER).setAudience(PROJECT).setExpirationTime("1h").sign(privateKey);
     await signedOut(v.reader(`Bearer ${t}`));
   }
+});
+
+test("noExpirySignedOut", async () => {
+  const t = await new SignJWT({}).setProtectedHeader({ alg: "RS256", kid: "k1" }).setSubject("reader-1").setIssuer(ISSUER).setAudience(PROJECT).sign(privateKey);
+  await signedOut(signInVerifier(SIGN_IN, { jwks }).reader(`Bearer ${t}`));
 });
 
 test("onlyRs256", async () => {
