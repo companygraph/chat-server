@@ -3,7 +3,7 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
+import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
 import { NAME_NOTE, nameNote, DIAGRAM_RULE, FACTS_RULE } from "../lib/prompt.mjs";
@@ -1184,4 +1184,74 @@ test("an extension the picture left out is not stated as departing from a step",
   const note = JSON.parse(diagramNote(diagramOf("diagram", { isError: false, data })));
   assert.equal(note.relations.length, 5);
   assert.ok(!JSON.stringify(note.relations).includes("9a"));
+});
+
+// The choice a request carries reaches the model, is named in `done`, and is paid for twice by a
+// signed-in reader: on the site's month and on their own, never on the day's share, which is the
+// visitors'.
+const OPUS_HIGH = { model: "claude-opus-5-5", effort: "high" };
+const readerMeter = (monthTokens = 5_000_000) => new ReaderMeter(new MemoryStore(), { monthTokens });
+const ask = [{ role: "user", content: "what is it?" }];
+
+test("choiceReachesRequest", async () => {
+  const model = fakeModel([textTurn("ok")]);
+  await answer({ host, model, meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(model.requests[0].model, "claude-opus-5-5");
+  assert.equal(model.requests[0].max_tokens, 16000);
+  assert.deepEqual(model.requests[0].output_config, { effort: "high" });
+  assert.equal(model.options[0].timeoutMs, 840_000, "a call above low may run past the minute");
+  const visitor = fakeModel([textTurn("ok")]);
+  await answer({ host, model: visitor, meter: meter() }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(visitor.requests[0].model, "claude-sonnet-5");
+  assert.equal(visitor.requests[0].max_tokens, 2400);
+  assert.equal(visitor.options[0].timeoutMs, 60_000);
+});
+
+test("doneNamesBy", async () => {
+  const { events, emit } = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, emit);
+  const done = events.find(([e]) => e === "done")[1];
+  assert.deepEqual(done.by, OPUS_HIGH);
+  assert.equal(done.model.repo, "companygraph/meta-model", "`model` stays the knowledge model's provenance");
+  const visitor = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: meter() }, { messages: ask, lang: "en" }, visitor.emit);
+  assert.deepEqual(visitor.events.find(([e]) => e === "done")[1].by, { model: "claude-sonnet-5", effort: "low" });
+});
+
+test("refusalDeclines", async () => {
+  const m = meter();
+  const { events, emit } = collect();
+  await assert.rejects(
+    answer({ host, model: fakeModel([{ content: [{ type: "text", text: "I won't" }], stop_reason: "refusal", usage }]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, emit),
+    (err) => err.code === "declined" && err.status === 422 && err.message === "the model declined to answer this question",
+  );
+  assert.deepEqual(events, [], "nothing of a declined round is sent");
+  assert.equal((await m.state()).monthTokens, 1000 * 2 + 100 * 10, "the declined call is paid for at its price");
+});
+
+test("readerCountsTwice", async () => {
+  const m = meter(), r = readerMeter();
+  const { events, emit } = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, emit);
+  const cost = 1000 * 2 + 100 * 10;
+  const site = await m.state();
+  assert.equal(site.monthTokens, cost);
+  assert.equal(site.dayTokens, 0, "a reader never spends the day's share");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost);
+  assert.equal(events.find(([e]) => e === "done")[1].spent, cost);
+  assert.equal(events.find(([e]) => e === "done")[1].dayLeft, m.dayShare, "dayLeft stays the site's day");
+});
+
+test("readerRefusalGivesBackSite", async () => {
+  const m = meter(), r = readerMeter(estimateFor(OPUS_HIGH) - 1);
+  const model = fakeModel([textTurn("ok")]);
+  await assert.rejects(
+    answer({ host, model, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit),
+    (err) => err.code === "over_user_month",
+  );
+  assert.equal(model.requests.length, 0, "the model is never asked");
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0, "the site's reservation is given back");
+  assert.equal(site.dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, 0);
 });

@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { createHttpServer } from "../lib/http.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { Meter, MemoryStore } from "../lib/meter.mjs";
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
+import { Meter, MemoryStore, ReaderMeter } from "../lib/meter.mjs";
+import { MODELS } from "../lib/models.mjs";
+import { signInVerifier, readerKey } from "../lib/signin.mjs";
 import { Bucket } from "../lib/bucket.mjs";
 import { MAX_BODY_BYTES } from "../lib/shape.mjs";
 import { startFixtureHost, COMMIT, EXAMPLE_ROOT } from "./helpers.mjs";
@@ -27,8 +30,8 @@ const scripted = (...texts) => ({ name: "fake", async turn(req, onText) { const 
 
 const config = (over = {}) => ({ mcpUrl: host.url, origins: ["https://site.test"], hosts: null, monthTokens: 1_000_000, project: "p", region: "eu", proxyHops: 1, port: 0, meter: "memory", anthropicKey: null, provider: "vertex", ...over });
 
-async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), log = () => {}, opts = {} } = {}) {
-  const server = createHttpServer({ config: cfg, host, model, meter, bucket, log }, opts);
+async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), log = () => {}, opts = {}, signIn, readers } = {}) {
+  const server = createHttpServer({ config: cfg, host, model, meter, bucket, log, ...(signIn !== undefined ? { signIn } : {}), ...(readers !== undefined ? { readers } : {}) }, opts);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   after(() => server.close());
   return `http://127.0.0.1:${server.address().port}`;
@@ -259,7 +262,7 @@ test("a body with no length is counted as it arrives, cut off at the cap, and th
 // The line the log keeps of a question: the words, the language, and what the loop saw. It is
 // written once the visitor has their answer or their refusal, never for a body that carried no
 // question the shape accepts, and it carries no address and no word of the answer.
-const KEYS = ["severity", "logging.googleapis.com/labels", "kind", "question", "lang", "cited", "calls", "empty", "rounds", "refused"];
+const KEYS = ["severity", "logging.googleapis.com/labels", "kind", "question", "lang", "model", "effort", "cited", "calls", "empty", "rounds", "refused"];
 // The two keys before kind are Cloud Logging's: it lifts them out of the payload into the entry's severity and labels, so the console filters the line as labels.logger="chat.question".
 const HEAD = { severity: "INFO", "logging.googleapis.com/labels": { logger: "chat.question" } };
 const lines = () => { const out = []; return { out, log: (s) => out.push(s) }; };
@@ -276,7 +279,7 @@ test("an answered question is kept as one line with the words, the language and 
   assert.equal(out.length, 1);
   const line = JSON.parse(out[0]);
   assert.deepEqual(Object.keys(line), KEYS);
-  assert.deepEqual(line, { ...HEAD, kind: "question", question: "What is it?", lang: "de", cited: [rootId], calls: 1, empty: 0, rounds: 2, refused: null });
+  assert.deepEqual(line, { ...HEAD, kind: "question", question: "What is it?", lang: "de", model: "claude-sonnet-5", effort: "low", cited: [rootId], calls: 1, empty: 0, rounds: 2, refused: null });
   assert.ok(!out[0].includes("203.0.113.77"), "no address in the line");
   assert.ok(!out[0].includes("It is the company"), "no word of the answer in the line");
 });
@@ -306,7 +309,7 @@ test("a refusal after the question was read is kept with its code, and one befor
   const meter = new Meter(new MemoryStore(), { monthTokens: 100 });
   const base = await listen({ cfg: config({ monthTokens: 100 }), meter, log });
   assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 429);
-  assert.deepEqual(JSON.parse(out[0]), { ...HEAD, kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "over_month" });
+  assert.deepEqual(JSON.parse(out[0]), { ...HEAD, kind: "question", question: "hi", lang: "en", model: "claude-sonnet-5", effort: "low", cited: [], calls: 0, empty: 0, rounds: 0, refused: "over_month" });
   await meter.store.transact((d) => ({ ...d, closed: true }));
   assert.equal((await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).status, 503);
   assert.equal(JSON.parse(out[1]).refused, "closed");
@@ -355,7 +358,7 @@ test("a busy refusal keeps no question the shape would refuse, and keeps the acc
   const padded = await post(base, { messages: [{ role: "user", content: " ".repeat(50000) + "hi" }], lang: "en" }, headers);
   assert.equal(padded.status, 429);
   assert.equal(out.length, 21, "twenty answers and one busy line for the padded question, nothing for the two the shape refuses");
-  assert.deepEqual(JSON.parse(out[20]), { ...HEAD, kind: "question", question: "hi", lang: "en", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
+  assert.deepEqual(JSON.parse(out[20]), { ...HEAD, kind: "question", question: "hi", lang: "en", model: "claude-sonnet-5", effort: "low", cited: [], calls: 0, empty: 0, rounds: 0, refused: "busy" });
 });
 
 test("a visitor who leaves mid-answer is kept with what the loop had, not as internal", async () => {
@@ -450,4 +453,105 @@ test("where the answer check ran, the kept line carries its two counts and still
   const line = JSON.parse(out[0]);
   assert.deepEqual([line.claims, line.unsupported], [1, 1]);
   assert.ok(!out[0].includes("fine answer"), "no word of the answer in the line");
+});
+
+// A deployment with sign-in: the identity service's keys are a local set, a token is signed here,
+// and a reader's month is a memory store per key, as the process builds one per reader.
+const ISSUER = "https://id.example.test";
+const ROLES = "urn:zitadel:iam:org:project:roles";
+const SIGN_IN = { issuer: ISSUER, projectId: "project-1", orgId: "org-site", userMonthTokens: 5_000_000, readerSecret: "secret", rolePrefix: null };
+const keys = await generateKeyPair("RS256");
+const jwks = createLocalJWKSet({ keys: [{ ...(await exportJWK(keys.publicKey)), alg: "RS256", kid: "k1" }] });
+const signedIn = () => config({ signIn: SIGN_IN });
+const verifier = () => signInVerifier(SIGN_IN, { jwks });
+const bearer = async (roles = {}) => `Bearer ${await new SignJWT({ [ROLES]: roles }).setProtectedHeader({ alg: "RS256", kid: "k1" }).setSubject("reader-1").setIssuer(ISSUER).setAudience("project-1").setIssuedAt().setExpirationTime("1h").sign(keys.privateKey)}`;
+const readerMeters = () => { const keysAsked = []; return { keysAsked, readers: async (key) => { keysAsked.push(key); return new ReaderMeter(new MemoryStore(), { monthTokens: SIGN_IN.userMonthTokens }); } }; };
+const capturing = () => { const requests = []; return { requests, name: "fake", async turn(req, onText) { requests.push(req); onText("hello"); return { content: [{ type: "text", text: "hello" }], stop_reason: "end_turn", usage }; } }; };
+
+test("preflightAllowsAuthorization", async () => {
+  const base = await listen();
+  const ok = await fetch(`${base}/chat`, { method: "OPTIONS", headers: { origin: "https://site.test", "access-control-request-method": "POST", "access-control-request-headers": "authorization" } });
+  assert.equal(ok.status, 204);
+  assert.equal(ok.headers.get("access-control-allow-headers"), "content-type, x-chat, authorization");
+});
+
+test("bearerWithoutSignInIgnored", async () => {
+  const { out, log } = lines();
+  const model = capturing();
+  const base = await listen({ model, log });
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, { authorization: "Bearer not-a-token" });
+  assert.equal(r.status, 200);
+  const ev = await events(r);
+  assert.deepEqual(ev[0], ["text", { text: "hello" }]);
+  assert.deepEqual(ev.at(-1)[1].by, { model: "claude-sonnet-5", effort: "low" });
+  assert.equal(model.requests[0].model, "claude-sonnet-5");
+  assert.equal(JSON.parse(out[0]).refused, null);
+  // A verifier handed in without the configuration's block is not consulted either.
+  const alone = await listen({ signIn: verifier() });
+  assert.equal((await post(alone, { messages: [{ role: "user", content: "hi" }], lang: "en" }, { authorization: "Bearer not-a-token" })).status, 200);
+});
+
+test("signedOutIs401", async () => {
+  const { out, log } = lines();
+  const model = capturing();
+  const base = await listen({ cfg: signedIn(), signIn: verifier(), readers: readerMeters().readers, model, log });
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, { authorization: "Bearer not-a-token" });
+  assert.equal(r.status, 401);
+  assert.equal(r.headers.get("access-control-allow-origin"), "https://site.test", "the panel can read why");
+  assert.equal((await r.json()).error.code, "signed_out");
+  assert.equal(model.requests.length, 0);
+  assert.deepEqual(JSON.parse(out[0]), { ...HEAD, kind: "question", question: "hi", lang: "en", model: null, effort: null, cited: [], calls: 0, empty: 0, rounds: 0, refused: "signed_out" });
+});
+
+test("notGrantedIs403", async () => {
+  const { out, log } = lines();
+  const model = capturing();
+  const base = await listen({ cfg: signedIn(), signIn: verifier(), readers: readerMeters().readers, model, log });
+  const visitor = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-opus-5-5", effort: "high" });
+  assert.equal(visitor.status, 403);
+  assert.equal((await visitor.json()).error.code, "not_granted");
+  const effort = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", effort: "medium" });
+  assert.equal((await effort.json()).error.code, "not_granted", "a visitor may not raise the effort either");
+  const reader = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-fable-5-1" }, { authorization: await bearer({ opus: { "org-site": "site.test" } }) });
+  assert.equal(reader.status, 403);
+  assert.equal((await reader.json()).error.code, "not_granted");
+  assert.equal(model.requests.length, 0);
+  assert.equal(out.length, 3, "each is a question asked and not answered");
+  for (const l of out) assert.deepEqual([JSON.parse(l).refused, JSON.parse(l).model, JSON.parse(l).effort], ["not_granted", null, null]);
+  const unknown = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-unknown" });
+  assert.equal((await unknown.json()).error.code, "bad_request");
+  assert.equal(out.length, 3, "a model the table does not hold is a malformed body and keeps nothing");
+});
+
+test("questionLineHasModelAndEffort", async () => {
+  const { out, log } = lines();
+  const model = capturing();
+  const { keysAsked, readers } = readerMeters();
+  const meter = new Meter(new MemoryStore(), { monthTokens: 1_000_000 });
+  const base = await listen({ cfg: signedIn(), signIn: verifier(), readers, model, log, meter });
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-opus-5-5", effort: "high" }, { authorization: await bearer({ opus: { "org-site": "site.test" } }) });
+  assert.equal(r.status, 200);
+  const ev = await events(r);
+  assert.deepEqual(ev.at(-1)[1].by, { model: "claude-opus-5-5", effort: "high" });
+  assert.equal(model.requests[0].model, "claude-opus-5-5");
+  assert.deepEqual(keysAsked, [readerKey("reader-1", "secret")], "the reader's month is kept under the key, not the sub");
+  assert.equal((await meter.state()).dayTokens, 0, "a reader's message spends the site's month and not the day");
+  const line = JSON.parse(out[0]);
+  assert.deepEqual(Object.keys(line), KEYS);
+  assert.deepEqual([line.model, line.effort, line.refused], ["claude-opus-5-5", "high", null]);
+  assert.ok(!out[0].includes("reader-1"), "no sub in the line");
+  assert.ok(!out[0].includes(keysAsked[0]), "no reader key in the line");
+  // A visitor's line names the default it was answered by.
+  await (await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" })).text();
+  assert.deepEqual([JSON.parse(out[1]).model, JSON.parse(out[1]).effort], ["claude-sonnet-5", "low"]);
+});
+
+test("getChatListsModels", async () => {
+  const visitor = await (await fetch(`${await listen()}/chat`)).json();
+  assert.deepEqual(visitor.models, Object.keys(MODELS));
+  assert.deepEqual(visitor.models, ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-haiku-5-5"]);
+  assert.equal(visitor.sign_in, null);
+  assert.equal(visitor.model, "claude-sonnet-5");
+  const signed = await (await fetch(`${await listen({ cfg: signedIn(), signIn: verifier() })}/chat`)).json();
+  assert.equal(signed.sign_in, ISSUER);
 });
