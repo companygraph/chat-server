@@ -9,10 +9,13 @@ export type Reader = {
  * the models their roles open on this site with a valid token; `signed_out` otherwise. The
  * issuer's keys default to its published set, which jose fetches once and keeps.
  * @param {SignIn} signIn
- * @param {{ jwks?: JWTVerifyGetKey }} [options]
+ * @param {{ jwks?: JWTVerifyGetKey; warn?: (fields: { reason: string }) => void }} [options]
  */
-export declare function signInVerifier(signIn: SignIn, { jwks }?: {
+export declare function signInVerifier(signIn: SignIn, { jwks, warn }?: {
     jwks?: JWTVerifyGetKey;
+    warn?: (fields: {
+        reason: string;
+    }) => void;
 }): {
     /**
      * @param {string | undefined} authorization

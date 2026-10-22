@@ -2,6 +2,8 @@ export type KeptQuestion = {
     kind?: string;
     question: string;
     lang?: string | null;
+    model?: string | null;
+    effort?: string | null;
     cited?: string[];
     calls?: number;
     empty?: number;
@@ -22,8 +24,8 @@ export type QuestionSource = {
 /**
  * A question the chat kept, as the log line holds it; `timestamp` is where the platform's own
  * source read it from. The fields after `question` are what the loop saw, and a line written
- * before one existed lacks it.
- * @typedef {{ kind?: string; question: string; lang?: string | null; cited?: string[]; calls?: number; empty?: number; rounds?: number; refused?: string | null; claims?: number; unsupported?: number; timestamp?: string }} KeptQuestion
+ * before one existed lacks it; one written before `model` was chosen was answered by the default.
+ * @typedef {{ kind?: string; question: string; lang?: string | null; model?: string | null; effort?: string | null; cited?: string[]; calls?: number; empty?: number; rounds?: number; refused?: string | null; claims?: number; unsupported?: number; timestamp?: string }} KeptQuestion
  */
 /**
  * Where a platform keeps the questions: what to say of the place, the entries of a range read from

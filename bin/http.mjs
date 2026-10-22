@@ -11,9 +11,10 @@ import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { modelFor } from "../lib/model.mjs";
-import { Meter } from "../lib/meter.mjs";
+import { Meter, ReaderMeter } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
-import { meterStore, identityTokenSource } from "../lib/platform.mjs";
+import { meterStore, readerStore, identityTokenSource } from "../lib/platform.mjs";
+import { signInVerifier } from "../lib/signin.mjs";
 import { createHttpServer } from "../lib/http.mjs";
 import { verdictCheck } from "../lib/verdict.mjs";
 import { typesafeJudge } from "../lib/typesafe.mjs";
@@ -63,9 +64,17 @@ try {
     ? verdictCheck({ judge: typesafeJudge({ key: /** @type {string} */ (config.typesafeKey) }), titles: () => host.titles(), promptTitles: async () => (await host.questions()).titles, threshold: config.verdictThreshold, warn })
     : null;
   if (verdict) host.refreshTitles().catch(() => {});
-  createHttpServer({ config, host, model, meter, bucket, verdict }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", /** @this {import("node:http").Server} */ function () {
+  // Sign-in, where the deployment names an issuer: one verifier for the process, since jose keeps
+  // the issuer's keys inside it, and a reader's meter built per message over the reader's own
+  // document. A token that failed is one warning line with jose's reason, never the token.
+  /** @param {{ reason: string }} fields */
+  const warnSignIn = (fields) => console.log(line("chat.signin", "WARNING", { kind: "signin", ...fields }));
+  const signIn = config.signIn ? signInVerifier(config.signIn, { warn: warnSignIn }) : null;
+  const signInConfig = config.signIn;
+  const readers = signInConfig ? async (/** @type {string} */ key) => new ReaderMeter(await readerStore(config.meter, key), { monthTokens: signInConfig.userMonthTokens }) : null;
+  createHttpServer({ config, host, model, meter, bucket, verdict, signIn, readers }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", /** @this {import("node:http").Server} */ function () {
     const port = (/** @type {import("node:net").AddressInfo} */ (this.address())).port, commit = host.provenance?.commit ?? null;
-    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict }));
+    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}, sign-in ${config.signIn ? config.signIn.issuer : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict, sign_in: config.signIn?.issuer ?? null }));
   });
 } catch (err) {
   console.error((/** @type {Error} */ (err)).message);

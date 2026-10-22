@@ -144,3 +144,13 @@ test("readerKeyIsStable", () => {
   assert.notEqual(readerKey("reader-1", "secret-b"), a);
   assert.notEqual(readerKey("reader-2", "secret-a"), a);
 });
+
+test("warnNamesOnlyTheReason", async () => {
+  /** @type {unknown[]} */
+  const seen = [];
+  const bad = await token({}, { key: foreign.privateKey });
+  await signedOut(signInVerifier(SIGN_IN, { jwks, warn: (fields) => seen.push(fields) }).reader(`Bearer ${bad}`));
+  assert.equal(seen.length, 1);
+  assert.deepEqual(Object.keys(/** @type {object} */ (seen[0])), ["reason"]);
+  assert.equal(typeof (/** @type {{ reason: unknown }} */ (seen[0])).reason, "string");
+});

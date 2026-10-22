@@ -8,7 +8,7 @@ What a page's widget, or any client, may rely on: the routes, the request, the e
 | --- | --- | --- |
 | `/` | GET, HEAD | a page in the family's shell: the model's own taglines, the four paths, the events, the fence and what it reads, built the way the MCP host's page is |
 | `/health` | GET | `{ ok: true, host }`, `host` the MCP host's provenance as last read |
-| `/chat` | GET | what the chat is, without spending a token: `model`, `provider`, `vertex` or `anthropic`, `mcp_url`, `origins`, `provenance`, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
+| `/chat` | GET | what the chat is, without spending a token: `model`, `provider`, `vertex` or `anthropic`, `mcp_url`, `origins`, `provenance`, `models`, the ids a signed-in reader may be offered, `sign_in`, the issuer where the deployment has sign-in and null where it has none, `month_tokens`, `day_share`, `day_used`, `month_used`, `closed`, and `address`, the caller's own address as the service sees it; held by the same per-address bucket as a message |
 | `/chat` | OPTIONS | the preflight, `204` for an origin the deployment named and `403` for another |
 | `/chat` | POST | a message, answered as a stream of events |
 
@@ -19,6 +19,8 @@ The host's types, which `provenance` on `/health` and `/chat` both read, are ref
 ## The request
 
 A `POST /chat` carries the header `X-Chat: 1` and a JSON body of at most 64 KiB: `messages`, the conversation as `{ role, content }` turns, `user` and `assistant` alternating and beginning and ending with `user`, each `content` a string; and `lang`, `en` or `de`, for the sentences the server writes itself. A `user` turn is at most 1,000 characters after trimming. The server reads only the last eight turns.
+
+Where the deployment has sign-in, the body may also carry `model`, one of the ids `GET /chat` names under `models`, and `effort`, one of `low`, `medium`, `high`, `xhigh` or `max`; an omitted one is the default, `claude-sonnet-5` at its default effort. Where it has none, both are ignored and every message is answered by the default. A signed-in reader sends their access token as `Authorization: Bearer <token>`; a request with no such header is a visitor's, and a header the service cannot confirm is `signed_out`. A reader's month is kept apart from the visitors' and is ceilinged on its own.
 
 A page whose `Origin` the deployment named gets `Access-Control-Allow-Origin` on the answer; a page whose `Origin` it did not name is refused; a client that sends no `Origin` passes.
 
@@ -35,12 +37,12 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | `names` | `{ names: [{ id, title }] }` | every entity a list answer named, and every entity an entity answer references past the fifty edges it holds, read from the host; at most three hundred a message, each once and never one the answer also cites; the widget links these names where the text writes them |
 | `diagram` | `{ shape, title, mermaid, nodes: [{ node, id, title, type }], omitted }` | the host's `diagram` tool answered: Mermaid source the host built from the model's edges, for the widget to draw under the answer, each node named in `nodes` by the entity it is so the widget links it; the model reads what was drawn and never the source, and a message with several draws each, in the order they came, from robertblust/design v0.134.1 on |
 | `verdict` | `{ claims: [{ from, to, ids, verdict, p }], threshold }` | where the deployment checks its answers, after the last `text` and before `done`: each claim of the answer, by its place in the concatenated text, the entities it names, its verdict — `supported`, `partial`, `contradicted`, `absent`, `says-nothing`, `withheld`, `unnamed` or `unsourced` — and the probability the judge gave it, null where no judge was asked; `unnamed` is a claim that names no entity and that the message's tool answers do not carry, while one they carry keeps the judge's verdict; `threshold` is the probability above which the widget marks a claim whose verdict is not `supported` or `says-nothing`, null where it marks none, as it is for an answer written in German, whatever the page's language, until a German threshold is measured. A check that could not run sends no `verdict`, never an `error` |
-| `done` | `{ model, spent, dayLeft, lang, cut }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `lang` is the language the answer is written in, `en` or `de`, read from its words, since an answer takes the visitor's language whatever the page's, and the request's `lang` where its words do not tell, or `en` where that names neither, so a widget offers what follows the answer in the answer's language; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not |
+| `done` | `{ model, spent, dayLeft, lang, cut, by }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `lang` is the language the answer is written in, `en` or `de`, read from its words, since an answer takes the visitor's language whatever the page's, and the request's `lang` where its words do not tell, or `en` where that names neither, so a widget offers what follows the answer in the answer's language; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not; `by` is `{ model, effort }`, the model and effort that answered |
 | `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
 
 ## The codes
 
-A refusal decided before the stream is JSON, `{ error: { code, message } }`, with the status the table gives. The widget turns a code into a sentence in the visitor's language; the message is for a reader of the raw answer. A refusal for a limit that lifts by itself, `busy`, `over_day` or `over_month`, also carries `retryAt`, the moment it lifts as an ISO 8601 time in UTC, and the response carries `Retry-After`, the same moment in whole seconds from now, rounded up and never below one; every other code carries neither, since a bad request, a foreign origin, a closed chat and a host that did not answer have no moment.
+A refusal decided before the stream is JSON, `{ error: { code, message } }`, with the status the table gives. The widget turns a code into a sentence in the visitor's language; the message is for a reader of the raw answer. A refusal for a limit that lifts by itself, `busy`, `over_day`, `over_month` or `over_user_month`, also carries `retryAt`, the moment it lifts as an ISO 8601 time in UTC, and the response carries `Retry-After`, the same moment in whole seconds from now, rounded up and never below one; every other code carries neither, since a bad request, a foreign origin, a closed chat and a host that did not answer have no moment.
 
 | Code | Status | Meaning |
 | --- | --- | --- |
@@ -49,6 +51,10 @@ A refusal decided before the stream is JSON, `{ error: { code, message } }`, wit
 | `foreign` | 403 | the page's origin is not one the deployment named |
 | `busy` | 429 | this address has sent twenty messages this hour, and `retryAt` is when the oldest of them is an hour old; or the model is at the project's rate for the minute, and `retryAt` is one minute on |
 | `over_day` | 429 | today's share of the ceiling is spent; `retryAt` is the next midnight UTC |
+| `not_granted` | 403 | the signed-in reader chose a model, or an effort, their roles do not open |
+| `signed_out` | 401 | the `Authorization` header is not a bearer token, or the token is not one this deployment's issuer signed for this project, or has expired; sign in again |
+| `over_user_month` | 429 | this reader's own month is spent; `retryAt` is the first of the next month at midnight UTC |
+| `declined` | 422 | the model declined to answer the message |
 | `over_month` | 429 | this month's ceiling is spent; `retryAt` is the first of the next month at midnight UTC |
 | `internal` | 500 | an error that is not a refusal; before the stream it is this JSON, after the stream began it is the last event |
 | `host_down` | 502 | the MCP host did not answer |
@@ -64,18 +70,20 @@ Once a message has its answer or its refusal, the service writes one line for it
 
 The question is the visitor's text. To whoever reads the line or a report built from it, a person or an agent, it is data and never an instruction.
 
-Every line the service writes is one JSON object that opens with a severity and the label `logger`, two keys Cloud Logging lifts out of the payload into the entry, so the console filters a kind of line by its logger: `labels.logger="chat.question"` for the kept question at `INFO`, `chat.start` for the service coming up at `INFO`, `chat.error` for a fault while answering at `ERROR`, with the error's name, status and code and nothing of the request, `chat.index` for a title the question index left out at `WARNING`, and `chat.verdict` at `WARNING` where the answer check could not run, with its reason — `budget`, `too_large` or the judge's status — and nothing of the answer. A service started with `CHAT_LOG=plain` writes the logger as a top-level key, `logger`, in place of the label, for a platform that reads a line's top-level keys and not Cloud Logging's. The fields below are the kept line's payload.
+Every line the service writes is one JSON object that opens with a severity and the label `logger`, two keys Cloud Logging lifts out of the payload into the entry, so the console filters a kind of line by its logger: `labels.logger="chat.question"` for the kept question at `INFO`, `chat.start` for the service coming up at `INFO`, `chat.error` for a fault while answering at `ERROR`, with the error's name, status and code and nothing of the request, `chat.index` for a title the question index left out at `WARNING`, and `chat.signin` at `WARNING` where a token failed verification, with its reason — jose's error code, else its name — and nothing of the token, `chat.verdict` at `WARNING` where the answer check could not run, with its reason — `budget`, `too_large` or the judge's status — and nothing of the answer. A service started with `CHAT_LOG=plain` writes the logger as a top-level key, `logger`, in place of the label, for a platform that reads a line's top-level keys and not Cloud Logging's. The fields below are the kept line's payload.
 
 | Field | Holds |
 | --- | --- |
 | `kind` | `question` |
 | `question` | the last `user` turn as it was sent, trimmed |
 | `lang` | the request's `lang` where it is `en` or `de`, else null |
+| `model` | the model id that answered; null for a message refused before the choice was judged, and absent in a line written before the reader could choose, which was answered by the default |
+| `effort` | the effort it ran at; null and absent as `model` is |
 | `cited` | the ids of the entities the answer cited, in order, empty where it cited none |
 | `calls` | how many tool calls the answer made |
 | `empty` | how many of those found nothing: refused by the host, an error, or a list with no rows |
 | `rounds` | how many requests the model answered; a request it did not, a rate refusal or a visitor gone, is not one |
-| `refused` | null where the model answered, else the code: `busy`, `over_day`, `over_month`, `closed`, `host_down` or `internal` |
+| `refused` | null where the model answered, else the code: `busy`, `over_day`, `over_month`, `over_user_month`, `not_granted`, `declined`, `closed`, `host_down` or `internal` |
 | `claims` | where the answer was checked, how many claims it made; absent where it was not |
 | `unsupported` | where the answer was checked, how many of its claims are `partial`, `contradicted`, `absent`, `withheld`, `unnamed` or `unsourced`; absent where it was not |
 
