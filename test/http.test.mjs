@@ -552,6 +552,29 @@ test("getChatListsModels", async () => {
   assert.deepEqual(visitor.models, ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-haiku-5-5"]);
   assert.equal(visitor.sign_in, null);
   assert.equal(visitor.model, "claude-sonnet-5");
-  const signed = await (await fetch(`${await listen({ cfg: signedIn(), signIn: verifier() })}/chat`)).json();
+  const signed = await (await fetch(`${await listen({ cfg: signedIn(), signIn: verifier(), readers: readerMeters().readers })}/chat`)).json();
   assert.equal(signed.sign_in, ISSUER);
+});
+
+test("signInNeedsReaderMeter", () => {
+  const services = { config: signedIn(), host, model: capturing(), meter: new Meter(new MemoryStore(), { monthTokens: 1_000_000 }), bucket: new Bucket(), log: () => {} };
+  assert.throws(() => createHttpServer({ ...services, signIn: verifier() }), /sign-in needs a token verifier and a reader meter/);
+  assert.throws(() => createHttpServer({ ...services, readers: readerMeters().readers }), /sign-in needs a token verifier and a reader meter/);
+  assert.throws(() => createHttpServer(services), /sign-in needs/);
+});
+
+test("noSignInIgnoresChoiceFields", async () => {
+  const { out, log } = lines();
+  const model = capturing();
+  const base = await listen({ model, log });
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-opus-5-5", effort: "max" });
+  assert.equal(r.status, 200);
+  const ev = await events(r);
+  assert.deepEqual(ev.at(-1)[1].by, { model: "claude-sonnet-5", effort: "low" });
+  assert.equal(model.requests[0].model, "claude-sonnet-5");
+  assert.equal(model.requests[0].max_tokens, 2400);
+  assert.deepEqual([JSON.parse(out[0]).model, JSON.parse(out[0]).effort], ["claude-sonnet-5", "low"]);
+  const unknown = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-unknown", effort: 5 });
+  assert.equal(unknown.status, 200, "fields 0.37.0 never read are not judged either");
+  await unknown.text();
 });

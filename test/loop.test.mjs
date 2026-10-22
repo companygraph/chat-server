@@ -1255,3 +1255,16 @@ test("readerRefusalGivesBackSite", async () => {
   assert.equal(site.dayTokens, 0);
   assert.equal((await r.settle(0, 0)).monthTokens, 0);
 });
+
+// A store fault giving one hold back does not leave the other booked, and the fault goes on.
+test("eachHoldGivenBackAlone", async () => {
+  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const site = meter(), r = readerMeter();
+  site.settle = async () => { throw new Error("site store down"); };
+  await assert.rejects(answer({ host, model: gone, meter: site }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /site store down/);
+  assert.equal((await r.settle(0, 0)).monthTokens, 0, "the reader's hold is given back");
+  const site2 = meter(), r2 = readerMeter();
+  r2.settle = async () => { throw new Error("reader store down"); };
+  await assert.rejects(answer({ host, model: gone, meter: site2 }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r2 }, collect().emit), /reader store down/);
+  assert.equal((await site2.state()).monthTokens, 0, "the site's hold is given back");
+});
