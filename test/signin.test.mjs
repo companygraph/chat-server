@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify } from "jose";
+import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, jwtVerify, errors } from "jose";
 import { signInVerifier, readerKey } from "../lib/signin.mjs";
 import { ChatError } from "../lib/errors.mjs";
 
@@ -153,4 +153,36 @@ test("warnNamesOnlyTheReason", async () => {
   assert.equal(seen.length, 1);
   assert.deepEqual(Object.keys(/** @type {object} */ (seen[0])), ["reason"]);
   assert.equal(typeof (/** @type {{ reason: unknown }} */ (seen[0])).reason, "string");
+});
+
+// The issuer's key endpoint that does not answer, or answers with no key set, says nothing about
+// the reader's token: it is the identity service down, 502, and the reader is not sent to sign in
+// again for it. Its sentence names nothing of the token either, and `warn` still has the reason.
+/**
+ * @param {() => Promise<never>} keys
+ * @param {string} reason
+ */
+async function keysDown(keys, reason) {
+  /** @type {{ reason: string }[]} */
+  const seen = [];
+  const bearer = await token();
+  await assert.rejects(signInVerifier(SIGN_IN, { jwks: keys, warn: (fields) => seen.push(fields) }).reader(`Bearer ${bearer}`), (err) => {
+    assert.ok(err instanceof ChatError);
+    assert.equal(err.code, "host_down");
+    assert.equal(err.status, 502);
+    assert.ok(!err.message.includes(bearer) && !/token/i.test(err.message), err.message);
+    return true;
+  });
+  assert.deepEqual(seen, [{ reason }]);
+}
+
+test("keysTimeoutHostDown", async () => {
+  await keysDown(async () => { throw new errors.JWKSTimeout(); }, "ERR_JWKS_TIMEOUT");
+  await keysDown(async () => { throw Object.assign(new Error("request timed out"), { code: "ERR_JWKS_TIMEOUT" }); }, "ERR_JWKS_TIMEOUT");
+});
+
+test("keysFetchFailedHostDown", async () => {
+  await keysDown(() => Promise.reject(new TypeError("fetch failed")), "TypeError");
+  await keysDown(async () => { throw new errors.JOSEError("Expected 200 OK from the JSON Web Key Set HTTP response"); }, "ERR_JOSE_GENERIC");
+  await keysDown(async () => { throw new errors.JWKSInvalid("JSON Web Key Set malformed"); }, "ERR_JWKS_INVALID");
 });

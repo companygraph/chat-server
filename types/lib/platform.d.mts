@@ -35,6 +35,11 @@ export declare const METERS: {
  * @param {Record<string, (options?: any) => Promise<Store>>} [adapters]
  */
 export declare const meterStore: (kind: string, options?: Record<string, string>, adapters?: Record<string, (options?: any) => Promise<Store>>) => Promise<Store>;
+/**
+ * @param {() => Promise<import("@google-cloud/firestore").Firestore>} [open]
+ * @returns {(key: string) => Promise<Store>}
+ */
+export declare function firestoreReaders(open?: () => Promise<import("@google-cloud/firestore").Firestore>): (key: string) => Promise<Store>;
 /** @type {Record<string, (key: string) => Promise<Store>>} */
 export declare const READERS: Record<string, (key: string) => Promise<Store>>;
 /**

@@ -53,7 +53,7 @@ const code = (c) => (e) => e.code === c;
 test("chosenDefault", () => {
   assert.deepEqual(chosen({}, null), DEFAULT_CHOICE);
   assert.deepEqual(chosen({}, reader()), DEFAULT_CHOICE);
-  assert.deepEqual(chosen({ effort: "high" }, reader()), { model: "claude-sonnet-5", effort: "high" }, "an absent field is its default");
+  assert.deepEqual(chosen({ effort: "high" }, reader("claude-opus-5-5")), { model: "claude-sonnet-5", effort: "high" }, "an absent field is its default");
 });
 
 test("chosenUnknownModelBadRequest", () => {
@@ -84,6 +84,14 @@ test("readerUngrantedModelNotGranted", () => {
 test("readerGrantedAnyEffort", () => {
   for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
     assert.deepEqual(chosen({ model: "claude-opus-5-5", effort }, reader("claude-opus-5-5")), { model: "claude-opus-5-5", effort });
-    assert.deepEqual(chosen({ effort }, reader()), { model: "claude-sonnet-5", effort });
+    assert.deepEqual(chosen({ effort }, reader("claude-opus-5-5")), { model: "claude-sonnet-5", effort }, "a role opens every effort, on the default too");
   }
+});
+
+// A reader who holds no role gets what a visitor gets: effort comes with a grant, and a sign-in
+// alone is no grant.
+test("roleLessReaderLowOnly", () => {
+  assert.deepEqual(chosen({ model: "claude-sonnet-5", effort: "low" }, reader()), DEFAULT_CHOICE);
+  assert.deepEqual(chosen({}, reader()), DEFAULT_CHOICE);
+  for (const effort of ["medium", "high", "xhigh", "max"]) assert.throws(() => chosen({ effort }, reader()), code("not_granted"));
 });

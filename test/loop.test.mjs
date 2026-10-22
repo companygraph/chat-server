@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
+import { answer, MESSAGE_DEADLINE_MS, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
@@ -1256,15 +1256,83 @@ test("readerRefusalGivesBackSite", async () => {
   assert.equal((await r.settle(0, 0)).monthTokens, 0);
 });
 
-// A store fault giving one hold back does not leave the other booked, and the fault goes on.
+// A store fault settling one hold does not leave the other booked, and the fault goes on. The
+// call reached the model, so a reader's holds settle at the estimate rather than at nothing.
 test("eachHoldGivenBackAlone", async () => {
   const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
   const site = meter(), r = readerMeter();
   site.settle = async () => { throw new Error("site store down"); };
   await assert.rejects(answer({ host, model: gone, meter: site }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /site store down/);
-  assert.equal((await r.settle(0, 0)).monthTokens, 0, "the reader's hold is given back");
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH), "the reader's hold is settled");
   const site2 = meter(), r2 = readerMeter();
   r2.settle = async () => { throw new Error("reader store down"); };
   await assert.rejects(answer({ host, model: gone, meter: site2 }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r2 }, collect().emit), /reader store down/);
-  assert.equal((await site2.state()).monthTokens, 0, "the site's hold is given back");
+  assert.equal((await site2.state()).monthTokens, estimateFor(OPUS_HIGH), "the site's hold is settled");
+});
+
+// A reader's call that reached the model and was cut, by a fault or by the reader leaving, may
+// have been paid for in full, and its usage is not known: both months keep the estimate. A
+// visitor's keeps today's nothing, which the day's share bounds.
+test("readerAbortSettlesAtEstimate", async () => {
+  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: gone, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /model gone/);
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH), "the site's month keeps the estimate");
+  assert.equal((await m.state()).dayTokens, 0, "and the day's share is still not the reader's");
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH), "the reader's month keeps the estimate");
+  const ac = new AbortController();
+  const left = { name: "fake", async turn() { ac.abort(); throw Object.assign(new Error("aborted"), { name: "AbortError" }); } };
+  const m2 = meter(), r2 = readerMeter();
+  await assert.rejects(answer({ host, model: left, meter: m2 }, { messages: ask, lang: "en", signal: ac.signal, choice: OPUS_HIGH, reader: r2 }, collect().emit), /aborted/);
+  assert.equal((await m2.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await r2.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+test("visitorAbortSettlesAtZero", async () => {
+  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const m = meter();
+  await assert.rejects(answer({ host, model: gone, meter: m }, { messages: ask, lang: "en" }, collect().emit), /model gone/);
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0);
+  assert.equal(site.dayTokens, 0);
+});
+
+// The reader's month refused at the second call: the first call's cost stands on both months,
+// and the second's hold on the site is given back, since that call never reached the model.
+test("readerRefusedAfterToolRoundGivesBackSite", async () => {
+  const cost = 1000 * 2 + 100 * 10;
+  const m = meter(), r = readerMeter(estimateFor(OPUS_HIGH) + cost - 1);
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("never")]);
+  await assert.rejects(
+    answer({ host, model, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit),
+    (err) => err.code === "over_user_month",
+  );
+  assert.equal(model.requests.length, 1);
+  assert.equal((await m.state()).monthTokens, cost, "the site keeps the first call alone");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost);
+});
+
+// A message that has run so long that a call at its effort could outlast the deadline answers
+// from what it has, in a final request, rather than being cut by the platform mid-call.
+test("deadlineMakesRoundFinal", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("It is the company.")]);
+  const turn = model.turn;
+  model.turn = async (...args) => { const msg = await turn(...args); t = start + MESSAGE_DEADLINE_MS - 60_000 + 1; return msg; };
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter(), now: () => t }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, emit);
+  assert.equal(MESSAGE_DEADLINE_MS, 870_000);
+  assert.equal(model.requests.length, 2);
+  assert.equal(model.requests[0].tool_choice, undefined, "the first round had the time");
+  assert.deepEqual(model.requests[1].tool_choice, { type: "none" }, "the second is final");
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, FINAL_NOTE);
+  assert.equal(events.at(-1)[0], "done");
+  // A minute left exactly is a minute's call, and the round goes on as any other.
+  t = start;
+  const enough = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn2 = enough.turn;
+  enough.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 60_000; return msg; };
+  await answer({ host, model: enough, meter: meter(), now: () => t }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, collect().emit);
+  assert.equal(enough.requests[1].tool_choice, undefined);
 });

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { meterStore, readerStore, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
+import { meterStore, readerStore, firestoreReaders, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 import { TableStore } from "../lib/platform/azure/meter.mjs";
@@ -108,4 +108,18 @@ test("readerStoreTableRefused says what sign-in needs", async () => {
 test("readerStore called twice at once for one key gives one store", async () => {
   const [a, b] = await Promise.all([readerStore("memory", "key-race"), readerStore("memory", "key-race")]);
   assert.equal(a, b);
+});
+
+// One Firestore client for every reader's month: a client a message opened and never closed
+// would hold its channel for the life of the process.
+test("readerStoreFirestoreSharesOneClient", async () => {
+  let opened = 0;
+  const db = { doc: (p) => ({ p }) };
+  const adapters = { firestore: firestoreReaders(async () => { opened++; return db; }) };
+  const [a, b] = await Promise.all([readerStore("firestore", "abc", adapters), readerStore("firestore", "def", adapters)]);
+  const c = await readerStore("firestore", "abc", adapters);
+  assert.equal(opened, 1, "the client is made once, on the first reader");
+  assert.ok(a.db === db && b.db === db && c.db === db);
+  assert.equal(a.ref.p, "chat-readers/abc");
+  assert.equal(b.ref.p, "chat-readers/def");
 });
