@@ -104,3 +104,8 @@ test("readerStore on firestore keeps the reader at their own path", async () => 
 test("readerStoreTableRefused says what sign-in needs", async () => {
   await assert.rejects(readerStore("table", "k"), (e) => e.message === "CHAT_METER=table keeps no readers' months; sign-in needs firestore or memory");
 });
+
+test("readerStore called twice at once for one key gives one store", async () => {
+  const [a, b] = await Promise.all([readerStore("memory", "key-race"), readerStore("memory", "key-race")]);
+  assert.equal(a, b);
+});
