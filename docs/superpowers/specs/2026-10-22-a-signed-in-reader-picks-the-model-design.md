@@ -1,0 +1,99 @@
+# A signed-in reader picks the model — design
+
+> Every chat answers with Claude Sonnet 5 at low effort, and nobody can ask for more. This adds sign-in through a ZITADEL instance of the family's own at `id.blust.ch`, with one organization for each of blust.ch, companygraph.io and guestgraph.io, and lets a signed-in reader pick a model and an effort in the chat panel, the way `/model` does in Claude Code, for each model a role grants. A reader who is not signed in, and one who is but holds no role, keeps Sonnet 5 at low effort. The meter weighs every call at its own model's price, and each signed-in reader has a month's ceiling of their own inside the site's.
+
+Status: proposed. Decided on October 22, 2026 with the owner against this repository at `ce1248d`, `robertblust/design` at `0.157.0` and the three hosts at chat-server `v0.37.0`.
+
+---
+
+## 1. The gap
+
+`lib/model.mjs` names one model, `claude-sonnet-5`, one effort, `low`, and one set of price weights, and its first comment says a deployment does not choose the model. That was right for a public chat with a fixed ceiling, and it leaves the owner, and anyone the owner trusts, asking the hardest questions of the cheapest setting. The chats are public and anonymous, so a picker open to everyone would let any visitor spend the month on the most expensive model. **A choice of model is a grant to a known person, and the server, not the panel, decides what a request may use.**
+
+## 2. Who may choose what
+
+There are three kinds of reader. A visitor who is not signed in gets `claude-sonnet-5` at `low`, as today, and sees no picker. A signed-in reader with no role gets the same. A signed-in reader with a role for a model may pick that model, and any effort from `low` to `max`, for each message; their own ceiling (section 5) bounds what that costs, so effort carries no role of its own.
+
+The models a grant can open, with the role that opens each, are these:
+
+| Role | Model id | Shown as |
+| --- | --- | --- |
+| (none) | `claude-sonnet-5` | Sonnet 5 |
+| `sonnet-5-5` | `claude-sonnet-5-5` | Sonnet 5.5 |
+| `opus` | `claude-opus-5-5` | Opus 5.5 |
+| `fable` | `claude-fable-5-1` | Fable 5.1 |
+| `haiku` | `claude-haiku-5-5` | Haiku 5.5 |
+
+The table lives in chat-server as code, beside the price weights, so a model and the price the meter counts for it move in one change; a deployment does not name models, it only says through roles who may use which. Every signed-in reader may also pick Sonnet 5 explicitly. The efforts are `low`, `medium`, `high`, `xhigh` and `max`, which every model in the table accepts.
+
+## 3. The identity service
+
+ZITADEL v4 runs self-hosted in a Google Cloud project of its own in `europe-west6`, in a new repository, `robertblust/id-blust-ch`, in the shape the Läderach proof of concept established, without its load balancer: ZITADEL and its login v2 container on Cloud Run with no minimum instances, so both scale to zero and the first sign-in after a quiet spell waits for them to start, which the owner accepts; PostgreSQL 18 on Cloud SQL at its smallest tier through the socket, the one part that runs all month; HTTP/2 (h2c) end to end to ZITADEL and `--tlsMode external`; the masterkey in Secret Manager and never in a file. `id.blust.ch` reaches the service through a Cloud Run domain mapping and not through Firebase Hosting as the hosts do, since Hosting forwards only the `__session` cookie to Cloud Run and ZITADEL's login needs its own. Domain mappings are offered only in some regions; the builder checks first whether `europe-west6` is one, and if it is not, the service stays in Zurich behind a global load balancer with a Google-managed certificate, as at Läderach, which the owner prefers to another region. Everything below the Google Cloud project is Terraform applied by GitHub Actions, as on the hosts. The DNS record for `id.blust.ch` is added at Hostpoint by hand, as the hosts' records are.
+
+A person has one account, in the organization that is their home, the owner's in `blust.ch`, and one sign-in serves all three sites; what they may use on each site is a grant in that site's organization. Because the login cannot know a reader's organization before they sign in, it shows the instance's own branding, in blust.ch's look, and not each site's.
+
+What ZITADEL holds is configured by Terraform too, with the `zitadel/zitadel` provider, in the same repository: the three organizations, `blust.ch`, `companygraph.io` and `guestgraph.io`; one project, `chat`, owned by `blust.ch` and granted to the other two organizations with all its roles; the roles of section 2; and one application per site, a public client using authorization code with PKCE, with the site's origin as its redirect and post-logout URI and access tokens issued as JWTs. Self-registration is off. People and the roles granted to them are never in a repository: the owner invites a user and grants roles in the ZITADEL console, since an address belongs in no repository.
+
+The repository has two Terraform roots, `infra/`, the project and what runs ZITADEL, and `zitadel/`, what ZITADEL holds, applied in that order. Three things exist only once ZITADEL has started, and the owner makes them once by hand, as the README's owner's steps say: the first human admin, the owner, from the first start's own setup; a machine user with the instance's admin role, whose key the owner puts into Secret Manager for the `zitadel/` root's provider; and the login client's token for login v2, put into Secret Manager the same way. No key or token is in a file.
+
+The builder confirms first that ZITADEL lets a site's organization grant a role of the granted project to a user whose home is another organization. If it does not, the project holds a role per site and model instead, such as `companygraph-io-opus`, all granted in `blust.ch`, and the server's check of section 5 reads the site from the role's name rather than from the organization the role was granted in; what a reader sees does not change.
+
+Sign-in happens only on the hosted login, as Läderach decided for the same reason: no credential is typed on a site, and one session on `id.blust.ch` signs a reader in on all three sites.
+
+## 4. The panel signs in and offers the picker
+
+The widget in `robertblust/design`, `assets/chat.js`, gains a sign-in link in the panel. It sends the reader to the hosted login with the site's client id, a PKCE challenge, a `state` holding the path they were on and the scopes `openid`, `profile`, `urn:zitadel:iam:org:project:id:<project id>:aud` and `urn:zitadel:iam:org:projects:roles`, and no organization scope, so a reader of any organization may sign in. Back on the site, it exchanges the code at the token endpoint, removes the code from the address bar, returns to the path in `state` and keeps the access token and the ID token in `localStorage` under the site's origin. There is no refresh token: when the access token lapses, after twelve hours, the panel says so and offers sign-in again, which the hosted login's own session usually makes one click. Sign-out clears both tokens and ends the session at the end-session endpoint.
+
+The script tag gains three attributes, `data-issuer`, `data-client` and `data-org`, and the project id as `data-project`; without `data-issuer` the widget behaves exactly as today. Signed in, the panel shows the reader's name from the ID token and a picker in its header with the models their roles open and the five efforts, and remembers the last choice in `localStorage`. The roles the panel reads from the ID token only decide what it offers; the server checks the access token on every message.
+
+A message signed in sends `Authorization: Bearer <access token>` and adds two fields to the body, `model`, the model id, and `effort`. The `done` event gains `by`, `{ "model": "<model id>", "effort": "<effort>" }`, beside its `model`, which stays the knowledge model's commit so that today's widgets read it unchanged; the panel shows the model and effort that answered beside the cite line, so a reader always knows which one spoke.
+
+## 5. The server checks the grant and counts the price
+
+Configuration gains an `identity` block in `chat.json`, `{ "issuer": "https://id.blust.ch", "project_id": "…", "org_id": "…" }`, and `user_month_tokens`, the ceiling of one signed-in reader in the site's units. `deploy/build/config.mjs` checks them as it checks the federation, the Terraform module passes them on as `CHAT_OIDC_ISSUER`, `CHAT_OIDC_PROJECT`, `CHAT_OIDC_ORG` and `CHAT_USER_MONTH_TOKENS`, and `lib/config.mjs` reads them. Without the block the service behaves exactly as today, so a deployment takes the release without taking sign-in, and the Azure deployment is not touched.
+
+The CORS preflight on `/chat` adds `authorization` to `Access-Control-Allow-Headers`. A POST without the header is a visitor's: a body that names a `model` other than `claude-sonnet-5` or an `effort` other than `low` is refused with a new code, `not_granted`, 403. A POST with the header has its token verified against the issuer's published keys, cached: the signature, the issuer, the audience holding the project id and the expiry; the reader's home organization is not checked. A token that fails is refused with a new code, `signed_out`, 401, which the panel answers by offering sign-in. A verified token's roles claim, `urn:zitadel:iam:org:project:roles`, must hold the role the requested model needs, granted in the site's organization, or the request is `not_granted`. The absent fields mean Sonnet 5 at `low` for everyone.
+
+The meter's unit stays what `month_tokens` already counts, one input token of Sonnet 5, so no deployment's ceiling changes its meaning. Each model has its own weights, the ratio of its price to that unit:
+
+| Model | Input | Cache write | Cache read | Output |
+| --- | --- | --- | --- | --- |
+| `claude-sonnet-5` | 1 | 1.25 | 0.1 | 5 |
+| `claude-sonnet-5-5` | 1 | 1.25 | 0.1 | 5 |
+| `claude-opus-5-5` | 2 | 2.5 | 0.1 | 10 |
+| `claude-fable-5-1` | 5 | 6.25 | 0.125 | 25 |
+| `claude-haiku-5-5` | 0.05 | 0.0625 | 0.005 | 0.25 |
+
+These follow Anthropic's first-party prices on October 6, 2026 ($2 input and $10 output a million tokens for Sonnet 5 and 5.5, $4 and $20 for Opus 5.5, $10 and $50 for Fable 5.1, $0.10 and $0.50 for Haiku 5.5, cache reads at $0.20 for Sonnet 5.5 and Opus 5.5 and $0.25 for Fable 5.1), with a five-minute cache write at 1.25 times input; the builder confirms each figure on the price list before the release, and Haiku's cache read in particular. The reservation's estimate is the input estimate at the model's input weight plus the effort's output limit at its output weight, so the check before a call holds what the call could at most write, and settling returns the rest.
+
+A signed-in reader's calls count against the site's month and against their own month, and not against the day's share, which keeps protecting the visitors: one question at `max` on Fable could otherwise spend most of a day and refuse every visitor until midnight in UTC. Their own month is kept in a Firestore document `chat/users/<key>`, where the key is an HMAC of the token's `sub` under a secret of the deployment, so the meter holds no identifier ZITADEL would recognize. Their month over `user_month_tokens` is refused with a new code, `over_user_month`, with its `retryAt` at the first of the next month in UTC. The per-address limit of twenty an hour holds for everyone.
+
+## 6. A request at a higher effort
+
+`params()` takes the model and effort of the request in place of the two constants and still sends no `thinking` field, so every model thinks adaptively. Thinking spends from `max_tokens`, and 2,400 would cut an answer off at a high effort, so the output limit follows the effort: 2,400 at `low`, as today, 8,000 at `medium`, 16,000 at `high`, 32,000 at `xhigh` and 64,000 at `max`. An answer at a high effort on Fable takes longer than the client's sixty seconds and the widget's ninety allow, so both timeouts follow the effort too, and the Terraform module raises the service's request timeout from 300 to 900 seconds when the `identity` block is set. The limits and timeouts above `low` are the starting point, set from a replay of the questions of the last report at each effort before the release, and written down with what that replay measured.
+
+Sonnet 5.5, Opus 5.5 and Fable 5.1 run safety classifiers and can stop with `stop_reason: "refusal"`; the loop reads the stop reason before the content, and a refusal ends the message with the `error` event and a code the panel names, as no other model has needed until now. The final round's `tool_choice: { type: "none" }` is accepted by every model in the table, and the history the widget sends is text, so a reader may change model between messages without the request changing shape. Fable 5.1 is not served under zero data retention, which the owner confirms for the organization before granting `fable`.
+
+## 7. What stays, and what was set aside
+
+The calls to Anthropic stay on each host's federated service account: the model is a field of the request, not a credential, and no key or account is added. The question line gains `model` and `effort` and nothing about the reader, so the ninety days the privacy pages give still describe what is kept, and the weekly report counts questions by model. `GET /chat` reports the default model as `model` and gains `models`, the table's ids. The sentence `lib/page.mjs` writes names Sonnet 5 as the model every visitor reads and a signed-in reader's pick as the other.
+
+Signed links carrying a grant were set aside: they are a credential anyone holding the link can use, revoked only by a list, and they would rebuild what an identity service does. Sign-in with Google against an allowlist was set aside because the allowlist would be addresses in a repository. A project per model was set aside for roles in one project, which give one token listing every grant, where projects would need an audience requested for each.
+
+## 8. Tests and what is measured
+
+chat-server's tests cover the configuration's checks and their absence; the preflight's headers; a visitor's request naming another model or effort refused as `not_granted`; a token with a bad signature, a foreign issuer, another audience, a lapsed expiry or another organization refused as `signed_out`, against keys a test serves; a reader's calls moving their own month and the site's month but not the day's share; a valid token whose role was granted in another site's organization refused as `not_granted`; a valid token without the role refused and with it answered by the requested model at the requested effort; the meter's units for each model from a fixed usage; the reader's month refused as `over_user_month` while the site's is not; the output limit per effort; a refusal stop reason ending the message with its code. The widget's tests cover the sign-in round trip against a fake issuer, the code removed from the address, the picker offering only the granted models, and the panel without `data-issuer` unchanged.
+
+On each host, before the release is named done, one message by hand per model at `low` and one on Fable at `max` show the model that answered in `done.by` and a meter that moved by that model's price.
+
+## 9. Build order
+
+The identity service comes first, since nothing else can be tried without it: `robertblust/id-blust-ch` live at `id.blust.ch` with its three organizations, the project, its roles and the three applications, and the owner's own user granted every role. chat-server follows, released as `0.38.0`; then the widget, as the next minor of `robertblust/design`; then the hosts, one at a time, blust.ch first, each re-pinned through `pins.json`'s move and given its `identity` block and `user_month_tokens`, and after each host its site repository, whose pages carry the chat script: every page that carries it takes the new design release and the four `data-` attributes, deployed once its host serves the release. Each host starts at `user_month_tokens` 5,000,000, about $10 a reader, and keeps `month_tokens` at 18,500,000; raising either is the owner's call at a later deploy, once the weekly report shows what readers spend.
+
+## 10. What this leaves
+
+ZITADEL becomes a system of each of the three mental models, and the decision to sign in on its hosted login a decision of them, written in the models' own editorial round and not part of this change. A role that opens an effort, should `max` ever need one, is a role more and a line in the server's check.
+
+## 11. Calls made in review
+
+These were settled in the design's review and not with the owner, and are the owner's to overturn: `done` gains `by` rather than changing `model`; the reservation holds the effort's whole output at the model's price; the request timeout is 900 seconds where sign-in is on; ZITADEL's configuration is a second Terraform root after three one-time steps by hand; the site repositories follow their hosts in the build order.
