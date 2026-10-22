@@ -1,7 +1,9 @@
-# A signed-in reader: the service verifies a ZITADEL token and mints its own short session for the
-# reader, signed with a secret only the service and this state hold. The secret is made here, not
-# by the owner, because nothing outside the deployment ever needs its value; it exists only when
-# the deployment signs readers in, and rotating it is a taint of the password and an apply.
+# A signed-in reader's month: the service verifies a ZITADEL token and keeps the reader's month in
+# a document of its own, chat-readers/<key>, whose key is the HMAC-SHA256 of the token's sub under
+# a secret only the service and this state hold, so the meter holds nothing the identity service
+# would recognize. The secret is made here, not by the owner, because nothing outside the
+# deployment ever needs its value; it exists only when the deployment signs readers in. Rotating
+# it, a taint of the password and an apply, gives every reader a new key and so a fresh month.
 resource "random_password" "reader_secret" {
   count   = var.sign_in == null ? 0 : 1
   length  = 48

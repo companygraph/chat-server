@@ -38,7 +38,7 @@ The answer is `text/event-stream`, each event an `event:` line and one `data:` l
 | `diagram` | `{ shape, title, mermaid, nodes: [{ node, id, title, type }], omitted }` | the host's `diagram` tool answered: Mermaid source the host built from the model's edges, for the widget to draw under the answer, each node named in `nodes` by the entity it is so the widget links it; the model reads what was drawn and never the source, and a message with several draws each, in the order they came, from robertblust/design v0.134.1 on |
 | `verdict` | `{ claims: [{ from, to, ids, verdict, p }], threshold }` | where the deployment checks its answers, after the last `text` and before `done`: each claim of the answer, by its place in the concatenated text, the entities it names, its verdict — `supported`, `partial`, `contradicted`, `absent`, `says-nothing`, `withheld`, `unnamed` or `unsourced` — and the probability the judge gave it, null where no judge was asked; `unnamed` is a claim that names no entity and that the message's tool answers do not carry, while one they carry keeps the judge's verdict; `threshold` is the probability above which the widget marks a claim whose verdict is not `supported` or `says-nothing`, null where it marks none, as it is for an answer written in German, whatever the page's language, until a German threshold is measured. A check that could not run sends no `verdict`, never an `error` |
 | `done` | `{ model, spent, dayLeft, lang, cut, by }` | the last event: the host's provenance, what the message cost in the meter's unit, and what is left of today's share; `lang` is the language the answer is written in, `en` or `de`, read from its words, since an answer takes the visitor's language whatever the page's, and the request's `lang` where its words do not tell, or `en` where that names neither, so a widget offers what follows the answer in the answer's language; `cut` is `true` where the output limit stopped the answer mid-sentence and is absent where it did not; `by` is `{ model, effort }`, the model and effort that answered |
-| `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy` | the last event when something arrives after the stream began: `host_down`, `busy` or `internal` |
+| `error` | `{ error: { code, message } }`, with `retryAt` where the code is `busy`, `over_day`, `over_month` or `over_user_month` | the last event when something arrives after the stream began: `host_down`, `busy`, `internal`, `over_user_month`, `declined`, `over_month`, `over_day` or `closed`, since every call of a message is held on the meter on its own and a hold refused at a later call, or a model declining at one, ends a stream already open |
 
 ## The codes
 
@@ -57,7 +57,7 @@ A refusal decided before the stream is JSON, `{ error: { code, message } }`, wit
 | `declined` | 422 | the model declined to answer the message |
 | `over_month` | 429 | this month's ceiling is spent; `retryAt` is the first of the next month at midnight UTC |
 | `internal` | 500 | an error that is not a refusal; before the stream it is this JSON, after the stream began it is the last event |
-| `host_down` | 502 | the MCP host did not answer |
+| `host_down` | 502 | the MCP host did not answer, or the identity service's keys could not be fetched to check a reader's token |
 | `closed` | 503 | the owner switched the chat off |
 
 A body over 64 KiB is refused with status 413 and a plain-text body, not the JSON shape, because it is refused before or while it is read: the `Content-Length` decides it where there is one, and otherwise the bytes are counted as they arrive and the request is dropped when they pass the cap.
@@ -91,7 +91,7 @@ Whether a question was answered is not a field: it is read as `refused` null and
 
 ## The meter's unit
 
-The input-equivalent token: input tokens as they are, cache writes at 1.25, cache reads at 0.1, output tokens at 5, rounded up per call. A deployment states its month in that unit; the day's share is a tenth.
+The input-equivalent token, one `claude-sonnet-5` input token. Each call is counted at the price of the model that answered it: its input tokens, cache writes, cache reads and output tokens each at that model's weight in the table in `lib/models.mjs`, which for Sonnet 5 is 1, 1.25, 0.1 and 5, rounded up per call. A deployment states its month in that unit; the day's share is a tenth.
 
 ## What counts as a break
 
