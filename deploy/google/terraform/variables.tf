@@ -86,3 +86,26 @@ variable "verdict_threshold" {
     error_message = "verdict_threshold is a probability between 0 and 1."
   }
 }
+
+# Readers who sign in at ZITADEL and choose the model. The service checks a token's issuer, the
+# project it was issued for and the organization the reader belongs to; role_prefix narrows which
+# roles count. chat.json's sign_in also holds the widget's client_id, which this object does not
+# name and so drops: the service has no use for it. The reader secret is made by the module.
+variable "sign_in" {
+  type = object({
+    issuer      = string
+    project_id  = string
+    org_id      = string
+    role_prefix = optional(string)
+  })
+  default = null
+}
+# What a signed-in reader may spend a month, beside month_tokens, which is the deployment's.
+variable "user_month_tokens" {
+  type    = number
+  default = null
+  validation {
+    condition     = var.sign_in == null || var.user_month_tokens != null
+    error_message = "user_month_tokens is required with sign_in."
+  }
+}

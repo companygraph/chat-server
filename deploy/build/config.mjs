@@ -65,8 +65,38 @@ export function federationProblems(c, platform = "google") {
 
 // The answer check runs on Google alone in this release: the Azure module holds no secret by
 // design, so TypeSafe's key has nowhere to come from there.
-const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold"];
+const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold", "sign_in"];
 const AZURE_ONLY = ["storage_account", "app_host", "dns_ready", "questions_workspace_id", "analyst_client_id"];
+
+// chat.json's sign_in, checked by form for the same reason as the federation: Terraform drops a key
+// its object type does not name. The issuer is compared with the token's `iss` as a string, so it
+// is held to one spelling: https, no trailing slash. client_id is the widget's, checked here and
+// not passed to the service.
+/** @type {Record<string, string>} */
+const SIGN_IN_IDS = { project_id: "a ZITADEL id, digits", org_id: "a ZITADEL id, digits" };
+
+/**
+ * @param {DeploymentFile} c
+ * @returns {string[]}
+ */
+export function signInProblems(c) {
+  const problems = [];
+  const s = c.sign_in;
+  if ("sign_in" in c) {
+    if (!s || typeof s !== "object" || Array.isArray(s)) problems.push("sign_in is an object");
+    else {
+      if (typeof s.issuer !== "string" || !s.issuer.startsWith("https://") || s.issuer.length <= "https://".length) problems.push("sign_in.issuer is an https:// address");
+      else if (s.issuer.endsWith("/")) problems.push("sign_in.issuer has no trailing slash");
+      for (const [k, what] of Object.entries(SIGN_IN_IDS)) if (!(typeof s[k] === "string" && /^[0-9]+$/.test(s[k]))) problems.push(`sign_in.${k} is ${what}`);
+      if (typeof s.client_id !== "string" || s.client_id === "") problems.push("sign_in.client_id is the widget's client id");
+      if ("role_prefix" in s && (typeof s.role_prefix !== "string" || s.role_prefix === "")) problems.push("sign_in.role_prefix is a non-empty string");
+      for (const k of Object.keys(s)) if (![...Object.keys(SIGN_IN_IDS), "issuer", "client_id", "role_prefix"].includes(k)) problems.push(`${k} is not a field of sign_in`);
+    }
+    if (!("user_month_tokens" in c)) problems.push("sign_in needs user_month_tokens, the tokens a signed-in reader gets a month");
+  } else if ("user_month_tokens" in c) problems.push("user_month_tokens needs sign_in");
+  if ("user_month_tokens" in c && !(Number.isInteger(c.user_month_tokens) && c.user_month_tokens > 0)) problems.push("user_month_tokens is a positive whole number");
+  return problems;
+}
 
 // chat.json as its platform needs it: the fields every chat names, the platform's own, and none of
 // the other platform's, since a field Terraform does not read would deploy as a missing one.
@@ -98,5 +128,5 @@ export function chatProblems(c, platform) {
     if (!["global", "us"].includes(c.inference_geo)) problems.push("inference_geo is global or us");
     else if (c.provider !== "anthropic") problems.push("inference_geo is for provider anthropic; on Vertex the region is the deployment's");
   }
-  return [...problems, ...federationProblems(c, platform)];
+  return [...problems, ...federationProblems(c, platform), ...(platform === "google" ? signInProblems(c) : [])];
 }
