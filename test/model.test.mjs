@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, credentialFault, overForTest } from "../lib/model.mjs";
+import { DEFAULT_MODEL, DEFAULT_EFFORT } from "../lib/models.mjs";
+import { WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, credentialFault, overForTest } from "../lib/model.mjs";
 import { googleIdentityToken, METADATA_IDENTITY_URL } from "../lib/platform/google/identity.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
@@ -8,17 +9,40 @@ const tools = [{ name: "search", description: "d", input_schema: { type: "object
 
 test("a request names the model, the effort, the output limit, and marks the prefix for caching", () => {
   const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }] });
-  assert.equal(r.model, MODEL);
-  assert.equal(MODEL, "claude-sonnet-5");
+  assert.equal(r.model, DEFAULT_MODEL);
+  assert.equal(DEFAULT_MODEL, "claude-sonnet-5");
   assert.equal(r.max_tokens, MAX_OUTPUT_TOKENS);
   assert.equal(MAX_OUTPUT_TOKENS, 2400);
-  assert.deepEqual(r.output_config, { effort: EFFORT });
+  assert.deepEqual(r.output_config, { effort: DEFAULT_EFFORT });
   assert.deepEqual(r.system, [{ type: "text", text: "S", cache_control: { type: "ephemeral" } }]);
   assert.equal(r.tools[1].cache_control, undefined, "the system mark already covers the tools before it");
   assert.equal(r.tools[0].cache_control, undefined);
   assert.deepEqual(r.messages, [{ role: "user", content: [{ type: "text", text: "q", cache_control: { type: "ephemeral" } }] }]);
   assert.equal(r.tool_choice, undefined);
   assert.equal(r.thinking, undefined);
+});
+
+test("paramsTakeTheChoice", () => {
+  const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }], choice: { model: "claude-opus-5-5", effort: "high" } });
+  assert.equal(r.model, "claude-opus-5-5");
+  assert.equal(r.max_tokens, 16000);
+  assert.equal(r.output_config.effort, "high");
+  assert.equal("thinking" in r, false);
+});
+
+test("paramsDefaultIsToday", () => {
+  const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }] });
+  assert.equal(r.model, "claude-sonnet-5");
+  assert.equal(r.max_tokens, 2400);
+  assert.equal(r.output_config.effort, "low");
+});
+
+test("turnPassesTimeout", async () => {
+  const seen = [];
+  const m = overForTest(async () => ({ messages: { stream: (_r, options) => { seen.push(options); return { on() {}, finalMessage: async () => ({ content: [], stop_reason: "end_turn", usage: {} }) }; } } }));
+  const signal = new AbortController().signal;
+  await m.turn({}, () => {}, { signal, timeoutMs: 840000 });
+  assert.deepEqual(seen, [{ signal, timeout: 840000 }]);
 });
 
 test("the newest block carries the mark, whatever its shape, and the caller's messages are left alone", () => {
@@ -74,13 +98,13 @@ test("the weights are the model's price ratios", () => {
 
 test("a Vertex model is built from a project and a region and exposes turn", () => {
   const m = vertexModel({ project: "p", region: "eu" });
-  assert.equal(m.name, MODEL);
+  assert.equal(m.name, DEFAULT_MODEL);
   assert.equal(typeof m.turn, "function");
 });
 
 test("an Anthropic model is built from a key and exposes turn, and the chooser reads the config", () => {
   const a = anthropicModel({ apiKey: "sk-ant-test" });
-  assert.equal(a.name, MODEL);
+  assert.equal(a.name, DEFAULT_MODEL);
   assert.equal(typeof a.turn, "function");
   const base = { project: "p", region: "eu", anthropicKey: null };
   assert.equal(modelFor(base).provider, "vertex");

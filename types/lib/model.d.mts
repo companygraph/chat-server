@@ -5,6 +5,7 @@ export type MessagesClient = {
     messages: {
         stream: (request: Request, options: {
             signal?: AbortSignal | undefined;
+            timeout?: number;
         }) => {
             on: (event: "text", listener: (delta: string) => void) => unknown;
             finalMessage: () => Promise<Anthropic.Message>;
@@ -17,6 +18,7 @@ export type Model = {
     credential: string;
     turn: (request: Request, onText: (delta: string) => void, options?: {
         signal?: AbortSignal | undefined;
+        timeoutMs?: number | undefined;
     }) => Promise<Anthropic.Message>;
 };
 /**
@@ -29,14 +31,13 @@ export type Model = {
  */
 /**
  * The part of a client a turn uses, which the Anthropic SDK's client and the Vertex one share.
- * @typedef {{ messages: { stream: (request: Request, options: { signal?: AbortSignal | undefined }) => { on: (event: "text", listener: (delta: string) => void) => unknown; finalMessage: () => Promise<Anthropic.Message> } } }} MessagesClient
+ * @typedef {{ messages: { stream: (request: Request, options: { signal?: AbortSignal | undefined; timeout?: number }) => { on: (event: "text", listener: (delta: string) => void) => unknown; finalMessage: () => Promise<Anthropic.Message> } } }} MessagesClient
  */
 /**
  * What the loop needs of a model: who it is, who answers for it and with what credential, and `turn`.
- * @typedef {{ name: string; provider: string; credential: string; turn: (request: Request, onText: (delta: string) => void, options?: { signal?: AbortSignal | undefined }) => Promise<Anthropic.Message> }} Model
+ * @typedef {{ name: string; provider: string; credential: string; turn: (request: Request, onText: (delta: string) => void, options?: { signal?: AbortSignal | undefined; timeoutMs?: number | undefined }) => Promise<Anthropic.Message> }} Model
  */
 export declare const MODEL = "claude-sonnet-5";
-export declare const EFFORT = "low";
 export declare const WEIGHTS: {
     input: number;
     cacheWrite: number;
@@ -45,17 +46,18 @@ export declare const WEIGHTS: {
 };
 export declare const FINAL_NOTE = "No further tool can be called in this message. Write the answer now from what the tools have answered, naming the entities it rests on, and where they did not say, say the model does not say.";
 /**
- * @param {{ system: string; tools: Anthropic.Tool[]; messages: Anthropic.MessageParam[]; final?: boolean; again?: boolean }} turn
+ * @param {{ system: string; tools: Anthropic.Tool[]; messages: Anthropic.MessageParam[]; final?: boolean; again?: boolean; choice?: import("./models.mjs").Choice }} turn
  *   `final` is the last request, which forbids a call; `again` is that request asked a second
  *   time after a silence, with an empty tool list.
  * @returns {Request}
  */
-export declare function params({ system, tools, messages, final, again }: {
+export declare function params({ system, tools, messages, final, again, choice }: {
     system: string;
     tools: Anthropic.Tool[];
     messages: Anthropic.MessageParam[];
     final?: boolean;
     again?: boolean;
+    choice?: import("./models.mjs").Choice;
 }): Request;
 /**
  * @param {unknown} err
