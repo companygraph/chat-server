@@ -3,7 +3,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { answer, MESSAGE_DEADLINE_MS, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor } from "../lib/meter.mjs";
+import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor, units } from "../lib/meter.mjs";
+import { overForTest } from "../lib/model.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
 import { ChatError } from "../lib/errors.mjs";
@@ -1379,4 +1380,49 @@ test("finalRoundTimeoutCapped", async () => {
   late.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 10; return msg; };
   await answer({ host, model: late, meter: meter(), now: () => t }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
   assert.equal(late.options[1].timeoutMs, 1000, "a call is never given less than a second");
+});
+
+// A reader's final call that the deadline cuts after its stream began reached the model, and
+// keeps its estimate on both months; the reader is told busy.
+test("readerFinalCallCutAtDeadlineSettlesAtEstimate", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const hanging = overForTest(async () => ({ messages: { stream: (_r, { signal }) => {
+    const listeners = {};
+    return {
+      on(event, listener) { (listeners[event] ??= []).push(listener); },
+      finalMessage: () => new Promise((_ok, fail) => {
+        for (const l of listeners.streamEvent ?? []) l({ type: "message_start" }, {});
+        signal.addEventListener("abort", () => fail(Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })), { once: true });
+      }),
+    };
+  } } }));
+  const m = meter(), r = readerMeter();
+  const clock = () => { const now = t; t = start + MESSAGE_DEADLINE_MS - 50; return now; };
+  const t0 = Date.now();
+  await assert.rejects(answer({ host, model: hanging, meter: m, now: clock }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  assert.ok(Date.now() - t0 < 3000, "the call was cut at the floor's second, not left to run");
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+// A call that completed knows its cost: a store that fails settling it is asked again in the
+// `finally` at that cost, not at a cut call's estimate or nothing.
+test("completedCallSettlesAtCostOnRetry", async () => {
+  const flaky = (meterLike) => {
+    const settle = meterLike.settle.bind(meterLike);
+    let first = true;
+    meterLike.settle = async (...args) => { if (first) { first = false; throw new Error("store blinked"); } return settle(...args); };
+    return meterLike;
+  };
+  const m = flaky(meter()), r = readerMeter();
+  await assert.rejects(answer({ host, model: fakeModel([textTurn("ok")]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /store blinked/);
+  const cost = units(usage, OPUS_HIGH.model);
+  assert.equal((await m.state()).monthTokens, cost, "the site's month keeps the call's cost");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost, "and so does the reader's, whose settle the fault skipped");
+  const v = flaky(meter());
+  await assert.rejects(answer({ host, model: fakeModel([textTurn("ok")]), meter: v }, { messages: ask, lang: "en" }, collect().emit), /store blinked/);
+  const visitorCost = units(usage, "claude-sonnet-5");
+  assert.equal((await v.state()).monthTokens, visitorCost, "a visitor's completed call is its cost too");
+  assert.equal((await v.state()).dayTokens, visitorCost);
 });

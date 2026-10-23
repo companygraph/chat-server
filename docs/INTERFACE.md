@@ -49,7 +49,7 @@ A refusal decided before the stream is JSON, `{ error: { code, message } }`, wit
 | `bad_request` | 400 | the body is not JSON, or not the shape above, or the header is missing |
 | `too_long` | 400 | a message is over 1,000 characters |
 | `foreign` | 403 | the page's origin is not one the deployment named |
-| `busy` | 429 | this address has sent twenty messages this hour, and `retryAt` is when the oldest of them is an hour old; or the model is at the project's rate for the minute, and `retryAt` is one minute on |
+| `busy` | 429 | this address has sent twenty messages this hour, and `retryAt` is when the oldest of them is an hour old; or the model is at the project's rate for the minute, or a call did not finish within its time, a minute at `low` and never past the message's deadline, and `retryAt` is one minute on |
 | `over_day` | 429 | today's share of the ceiling is spent; `retryAt` is the next midnight UTC |
 | `not_granted` | 403 | the signed-in reader chose a model, or an effort, their roles do not open |
 | `signed_out` | 401 | the `Authorization` header is not a bearer token, or the token is not one this deployment's issuer signed for this project, or has expired; sign in again |

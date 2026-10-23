@@ -40,9 +40,14 @@ test("paramsDefaultIsToday", () => {
 test("turnPassesTimeout", async () => {
   const seen = [];
   const m = overForTest(async () => ({ messages: { stream: (_r, options) => { seen.push(options); return { on() {}, finalMessage: async () => ({ content: [], stop_reason: "end_turn", usage: {} }) }; } } }));
-  const signal = new AbortController().signal;
-  await m.turn({}, () => {}, { signal, timeoutMs: 840000 });
-  assert.deepEqual(seen, [{ signal, timeout: 840000 }]);
+  const ac = new AbortController();
+  await m.turn({}, () => {}, { signal: ac.signal, timeoutMs: 840000 });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].timeout, 840000);
+  assert.notEqual(seen[0].signal, ac.signal, "the call's own signal bounds the whole call");
+  assert.equal(seen[0].signal.aborted, false);
+  ac.abort();
+  assert.equal(seen[0].signal.aborted, true, "and the caller's abort still reaches it");
 });
 
 // A call reaches the model when its stream begins: the first event the provider sends, once
@@ -92,6 +97,36 @@ test("turnCallsOnStartOnce over the SDK's own stream", async () => {
   const answering = async (url, init) => (String(url).endsWith("/v1/messages") ? new Response(sse, { headers: { "content-type": "text/event-stream" } }) : refusing(url, init));
   assert.equal((await turn(answering)).content[0].text, "hi");
   assert.equal(starts, 1);
+});
+
+// The SDK's own `timeout` arms only until the response's headers arrive, so a stream that
+// begins and then outlasts the call's time would run on. The turn bounds the whole call: one
+// that runs past its time is cut there, and is busy, with no word of the SDK's abort.
+test("turnBoundsTheWholeStream", async () => {
+  const ev = (e, d) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`;
+  const head = ev("message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } });
+  const { fetch: refusing } = fakeFetch();
+  // A body that sends its first event and then nothing until the request's signal ends it, as
+  // a real fetch's body does on abort.
+  const slow = async (url, init = {}) => {
+    if (!String(url).endsWith("/v1/messages")) return refusing(url, init);
+    const body = new ReadableStream({ start(c) {
+      c.enqueue(new TextEncoder().encode(head));
+      init.signal?.addEventListener("abort", () => c.error(init.signal.reason), { once: true });
+    } });
+    return new Response(body, { headers: { "content-type": "text/event-stream" } });
+  };
+  let starts = 0;
+  const m = anthropicModel({ federation, identityToken: googleIdentityToken, fetch: slow });
+  const t0 = Date.now();
+  await assert.rejects(m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { timeoutMs: 200, onStart: () => { starts++; } }), (e) => e.code === "busy" && e.retryAt !== undefined);
+  const took = Date.now() - t0;
+  assert.ok(took >= 150 && took < 1000, `cut at about its time, not after: ${took} ms`);
+  assert.equal(starts, 1, "the call had begun");
+  // The reader's own leaving is still what it was, never busy.
+  const ac = new AbortController();
+  setTimeout(() => ac.abort(), 50);
+  await assert.rejects(m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { signal: ac.signal, timeoutMs: 5000 }), (e) => e.code === undefined);
 });
 
 test("the newest block carries the mark, whatever its shape, and the caller's messages are left alone", () => {
