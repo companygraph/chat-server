@@ -6,6 +6,7 @@ import { connectHost } from "../lib/host.mjs";
 import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor } from "../lib/meter.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
+import { ChatError } from "../lib/errors.mjs";
 import { NAME_NOTE, nameNote, DIAGRAM_RULE, FACTS_RULE } from "../lib/prompt.mjs";
 import { startFixtureHost, EXAMPLE_ROOT, exampleSnapshot } from "./helpers.mjs";
 
@@ -38,6 +39,7 @@ function fakeModel(script) {
     async turn(request, onText, opts) {
       requests.push(request);
       options.push(opts);
+      opts?.onStart?.();
       const msg = script.shift();
       for (const c of msg.content) if (c.type === "text") onText(c.text);
       return msg;
@@ -1259,7 +1261,7 @@ test("readerRefusalGivesBackSite", async () => {
 // A store fault settling one hold does not leave the other booked, and the fault goes on. The
 // call reached the model, so a reader's holds settle at the estimate rather than at nothing.
 test("eachHoldGivenBackAlone", async () => {
-  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const gone = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new Error("model gone"); } };
   const site = meter(), r = readerMeter();
   site.settle = async () => { throw new Error("site store down"); };
   await assert.rejects(answer({ host, model: gone, meter: site }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /site store down/);
@@ -1274,18 +1276,40 @@ test("eachHoldGivenBackAlone", async () => {
 // have been paid for in full, and its usage is not known: both months keep the estimate. A
 // visitor's keeps today's nothing, which the day's share bounds.
 test("readerAbortSettlesAtEstimate", async () => {
-  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const gone = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new Error("model gone"); } };
   const m = meter(), r = readerMeter();
   await assert.rejects(answer({ host, model: gone, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /model gone/);
   assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH), "the site's month keeps the estimate");
   assert.equal((await m.state()).dayTokens, 0, "and the day's share is still not the reader's");
   assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH), "the reader's month keeps the estimate");
   const ac = new AbortController();
-  const left = { name: "fake", async turn() { ac.abort(); throw Object.assign(new Error("aborted"), { name: "AbortError" }); } };
+  const left = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); ac.abort(); throw Object.assign(new Error("aborted"), { name: "AbortError" }); } };
   const m2 = meter(), r2 = readerMeter();
   await assert.rejects(answer({ host, model: left, meter: m2 }, { messages: ask, lang: "en", signal: ac.signal, choice: OPUS_HIGH, reader: r2 }, collect().emit), /aborted/);
   assert.equal((await m2.state()).monthTokens, estimateFor(OPUS_HIGH));
   assert.equal((await r2.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+// A call the provider refused before its stream began never reached the model: a 429, a
+// credential or its exchange, a client that would not build. Both months are where they were.
+test("readerBusyBeforeStartChargesNothing", async () => {
+  const busy = { name: "fake", async turn() { throw new ChatError("busy", "the model is busy; try again in a minute", { retryAt: 0 }); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: busy, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0, "the site's hold is given back");
+  assert.equal(site.dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, 0, "and the reader's");
+});
+
+// The same fault once the stream has begun is a call that reached the model: the estimate on both.
+test("readerFaultAfterStartChargesEstimate", async () => {
+  const cut = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new ChatError("busy", "the model is busy; try again in a minute", { retryAt: 0 }); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: cut, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await m.state()).dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
 });
 
 test("visitorAbortSettlesAtZero", async () => {
@@ -1335,4 +1359,24 @@ test("deadlineMakesRoundFinal", async () => {
   enough.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 60_000; return msg; };
   await answer({ host, model: enough, meter: meter(), now: () => t }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, collect().emit);
   assert.equal(enough.requests[1].tool_choice, undefined);
+});
+
+// The round the deadline makes final may not run past it either: its call is given the time
+// the message has left, never less than a second, so the platform's cut never falls mid-answer.
+test("finalRoundTimeoutCapped", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("It is the company.")]);
+  const turn = model.turn;
+  model.turn = async (...args) => { const msg = await turn(...args); t = start + 100_000; return msg; };
+  await answer({ host, model, meter: meter(), now: () => t }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(model.options[0].timeoutMs, 840_000, "the first round had the time");
+  assert.deepEqual(model.requests[1].tool_choice, { type: "none" }, "the second is final");
+  assert.equal(model.options[1].timeoutMs, MESSAGE_DEADLINE_MS - 100_000, "and is given what is left");
+  t = start;
+  const late = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn2 = late.turn;
+  late.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 10; return msg; };
+  await answer({ host, model: late, meter: meter(), now: () => t }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(late.options[1].timeoutMs, 1000, "a call is never given less than a second");
 });

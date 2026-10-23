@@ -7,19 +7,21 @@ export type MessagesClient = {
             signal?: AbortSignal | undefined;
             timeout?: number;
         }) => {
-            on: (event: "text", listener: (delta: string) => void) => unknown;
+            on: ((event: "text", listener: (delta: string) => void) => unknown) & ((event: "streamEvent", listener: () => void) => unknown);
             finalMessage: () => Promise<Anthropic.Message>;
         };
     };
+};
+export type TurnOptions = {
+    signal?: AbortSignal | undefined;
+    timeoutMs?: number | undefined;
+    onStart?: (() => void) | undefined;
 };
 export type Model = {
     name: string;
     provider: string;
     credential: string;
-    turn: (request: Request, onText: (delta: string) => void, options?: {
-        signal?: AbortSignal | undefined;
-        timeoutMs?: number | undefined;
-    }) => Promise<Anthropic.Message>;
+    turn: (request: Request, onText: (delta: string) => void, options?: TurnOptions) => Promise<Anthropic.Message>;
 };
 /**
  * @import { Config, Federation } from "./config.mjs"
@@ -31,11 +33,17 @@ export type Model = {
  */
 /**
  * The part of a client a turn uses, which the Anthropic SDK's client and the Vertex one share.
- * @typedef {{ messages: { stream: (request: Request, options: { signal?: AbortSignal | undefined; timeout?: number }) => { on: (event: "text", listener: (delta: string) => void) => unknown; finalMessage: () => Promise<Anthropic.Message> } } }} MessagesClient
+ * @typedef {{ messages: { stream: (request: Request, options: { signal?: AbortSignal | undefined; timeout?: number }) => { on: ((event: "text", listener: (delta: string) => void) => unknown) & ((event: "streamEvent", listener: () => void) => unknown); finalMessage: () => Promise<Anthropic.Message> } } }} MessagesClient
+ */
+/**
+ * What a turn is given beside the request: the reader's signal, how long the call may run, and
+ * `onStart`, called once when the provider's stream begins, which is when the call has reached
+ * the model.
+ * @typedef {{ signal?: AbortSignal | undefined; timeoutMs?: number | undefined; onStart?: (() => void) | undefined }} TurnOptions
  */
 /**
  * What the loop needs of a model: who it is, who answers for it and with what credential, and `turn`.
- * @typedef {{ name: string; provider: string; credential: string; turn: (request: Request, onText: (delta: string) => void, options?: { signal?: AbortSignal | undefined; timeoutMs?: number | undefined }) => Promise<Anthropic.Message> }} Model
+ * @typedef {{ name: string; provider: string; credential: string; turn: (request: Request, onText: (delta: string) => void, options?: TurnOptions) => Promise<Anthropic.Message> }} Model
  */
 export declare const MODEL = "claude-sonnet-5";
 export declare const WEIGHTS: {

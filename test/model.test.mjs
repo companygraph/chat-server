@@ -45,6 +45,55 @@ test("turnPassesTimeout", async () => {
   assert.deepEqual(seen, [{ signal, timeout: 840000 }]);
 });
 
+// A call reaches the model when its stream begins: the first event the provider sends, once
+// however many follow. A stream that fails before any event never began, and calls nothing.
+const streaming = (events, fault = null) => ({ messages: { stream: () => {
+  const listeners = {};
+  return {
+    on(event, listener) { (listeners[event] ??= []).push(listener); },
+    finalMessage: async () => {
+      for (const e of events) for (const l of listeners.streamEvent ?? []) l(e, {});
+      if (fault) throw fault;
+      return { content: [], stop_reason: "end_turn", usage: {} };
+    },
+  };
+} } });
+
+test("turnCallsOnStartOnce", async () => {
+  let starts = 0;
+  const onStart = () => { starts++; };
+  await overForTest(async () => streaming([{ type: "message_start" }, { type: "content_block_start" }, { type: "message_stop" }])).turn({}, () => {}, { onStart });
+  assert.equal(starts, 1, "the first event begins the call, and the rest do not again");
+  starts = 0;
+  const busy = Object.assign(new Error("slow"), { status: 429 });
+  await assert.rejects(overForTest(async () => streaming([], busy)).turn({}, () => {}, { onStart }), (e) => e.code === "busy");
+  assert.equal(starts, 0, "a call refused before its first event never began");
+  await assert.rejects(overForTest(async () => streaming([{ type: "message_start" }], new Error("cut"))).turn({}, () => {}, { onStart }), /cut/);
+  assert.equal(starts, 1, "a call cut after its first event began");
+  await overForTest(async () => streaming([{ type: "message_start" }])).turn({}, () => {});
+});
+
+// The same over the SDK itself: a 429 is no stream, and an answer's first server-sent event is.
+test("turnCallsOnStartOnce over the SDK's own stream", async () => {
+  const sse = [
+    ["message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } }],
+    ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }],
+    ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } }],
+    ["content_block_stop", { type: "content_block_stop", index: 0 }],
+    ["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }],
+    ["message_stop", { type: "message_stop" }],
+  ].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
+  const { fetch: refusing } = fakeFetch();
+  let starts = 0;
+  const onStart = () => { starts++; };
+  const turn = (fetch) => anthropicModel({ federation, identityToken: googleIdentityToken, fetch }).turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { onStart });
+  await assert.rejects(turn(refusing), (e) => e.code === "busy");
+  assert.equal(starts, 0, "the API refused the call before it began");
+  const answering = async (url, init) => (String(url).endsWith("/v1/messages") ? new Response(sse, { headers: { "content-type": "text/event-stream" } }) : refusing(url, init));
+  assert.equal((await turn(answering)).content[0].text, "hi");
+  assert.equal(starts, 1);
+});
+
 test("the newest block carries the mark, whatever its shape, and the caller's messages are left alone", () => {
   const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }, { type: "tool_result", tool_use_id: "b", content: "y" }];
   const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "text", text: "t" }] }, { role: "user", content: results }];

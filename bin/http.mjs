@@ -27,7 +27,8 @@ const fakeModel = {
   name: "fake",
   provider: "fake",
   credential: "none",
-  async turn(request, onText) {
+  async turn(request, onText, { onStart } = {}) {
+    onStart?.();
     const text = "This is a local run without a model; the host answered the handshake and nothing was asked of it.";
     onText(text);
     return /** @type {import("@anthropic-ai/sdk").default.Message} */ (/** @type {unknown} */ ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } }));
