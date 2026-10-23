@@ -15,6 +15,7 @@ export type MessagesClient = {
 export type TurnOptions = {
     signal?: AbortSignal | undefined;
     timeoutMs?: number | undefined;
+    whole?: boolean | undefined;
     onStart?: (() => void) | undefined;
 };
 export type Model = {
@@ -36,10 +37,10 @@ export type Model = {
  * @typedef {{ messages: { stream: (request: Request, options: { signal?: AbortSignal | undefined; timeout?: number }) => { on: ((event: "text", listener: (delta: string) => void) => unknown) & ((event: "streamEvent", listener: () => void) => unknown); finalMessage: () => Promise<Anthropic.Message> } } }} MessagesClient
  */
 /**
- * What a turn is given beside the request: the reader's signal, how long the call may run, and
- * `onStart`, called once when the provider's stream begins, which is when the call has reached
- * the model.
- * @typedef {{ signal?: AbortSignal | undefined; timeoutMs?: number | undefined; onStart?: (() => void) | undefined }} TurnOptions
+ * What a turn is given beside the request: the reader's signal, how long the call may run,
+ * `whole` where that time bounds the whole call and not only its headers, and `onStart`, called
+ * once when the provider's stream begins, which is when the call has reached the model.
+ * @typedef {{ signal?: AbortSignal | undefined; timeoutMs?: number | undefined; whole?: boolean | undefined; onStart?: (() => void) | undefined }} TurnOptions
  */
 /**
  * What the loop needs of a model: who it is, who answers for it and with what credential, and `turn`.

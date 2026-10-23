@@ -1426,3 +1426,24 @@ test("completedCallSettlesAtCostOnRetry", async () => {
   assert.equal((await v.state()).monthTokens, visitorCost, "a visitor's completed call is its cost too");
   assert.equal((await v.state()).dayTokens, visitorCost);
 });
+
+// Which calls the time bounds whole: a reader's, and any the message's deadline cut below its
+// effort's time. A visitor's ordinary call is bound only until its headers, as at v0.37.0.
+test("visitorCallBoundWholeOnlyWhereTheDeadlineCutsIt", async () => {
+  const visitor = fakeModel([textTurn("ok")]);
+  await answer({ host, model: visitor, meter: meter() }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(visitor.options[0].timeoutMs, 60_000);
+  assert.equal(visitor.options[0].whole, false);
+  const reader = fakeModel([textTurn("ok")]);
+  await answer({ host, model: reader, meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(reader.options[0].whole, true);
+  let t = 1_000_000;
+  const start = t;
+  const late = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn = late.turn;
+  late.turn = async (...args) => { const msg = await turn(...args); t = start + MESSAGE_DEADLINE_MS - 30_000; return msg; };
+  await answer({ host, model: late, meter: meter(), now: () => t }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(late.options[0].whole, false);
+  assert.equal(late.options[1].timeoutMs, 30_000, "the deadline cut the visitor's last call below its minute");
+  assert.equal(late.options[1].whole, true, "and that call is bound whole");
+});
