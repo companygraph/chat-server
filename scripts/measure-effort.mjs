@@ -13,7 +13,7 @@
 // Sonnet 5 at `low` and only a reader's call is bound whole by its effort's time. It records per
 // message the rounds, the seconds, the last call's stop reason, whether that call was cut by the
 // output limit, whether the message's deadline made a round final before the rounds ran out, and
-// what the completed calls cost in the meter's units and in dollars. The table it prints is also
+// what the meter settled for it, in its units and in dollars. The table it prints is also
 // written to `.superpowers/measure-effort-<date>.md`, which git ignores. Where a cut or a deadline
 // shows, the effort's limit or its rounds are changed in `lib/models.mjs` and the replay is run
 // again, and the final table goes into the spec's section 6 with its date.
@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { answer } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { anthropicModel } from "../lib/model.mjs";
-import { Meter, ReaderMeter, MemoryStore, estimateFor, units, ESTIMATE_INPUT } from "../lib/meter.mjs";
+import { Meter, ReaderMeter, MemoryStore, estimateFor, ESTIMATE_INPUT } from "../lib/meter.mjs";
 import { MODELS, EFFORTS, outputLimit } from "../lib/models.mjs";
 import { MAX_ROUNDS } from "../lib/shape.mjs";
 import { startFixtureHost, QUESTION_TITLES } from "../test/helpers.mjs";
@@ -111,7 +111,7 @@ const rows = [];
 let total = 0;
 for (const choice of choices) {
   for (const question of questions) {
-    /** What each completed call of this message stopped with and cost. */
+    /** What each completed call of this message stopped with. */
     const calls = [];
     let index = 0, deadline = false;
     // The loop's own model, watched: a request that forbids a tool call before the cap's round is
@@ -123,10 +123,13 @@ for (const choice of choices) {
         if (request.tool_choice?.type === "none" && index < MAX_ROUNDS) deadline = true;
         index++;
         const msg = await model.turn(request, onText, options);
-        calls.push({ stop: msg.stop_reason, units: units(msg.usage, choice.model) });
+        calls.push({ stop: msg.stop_reason });
         return msg;
       },
     };
+    // What the message cost is what the site's meter settled, so a call cut by its time, which
+    // reports no usage, counts at its estimate as a reader's does.
+    const before = (await meter.state()).monthTokens;
     const started = performance.now();
     let rounds = 0, error = "";
     try {
@@ -136,10 +139,12 @@ for (const choice of choices) {
       rounds = err.signals?.rounds ?? calls.length;
     }
     const seconds = (performance.now() - started) / 1000;
-    const spent = calls.reduce((s, c) => s + c.units, 0);
+    const spent = (await meter.state()).monthTokens - before;
     total += spent;
-    const stop = calls.at(-1)?.stop ?? "—";
-    const row = { choice, question, rounds, seconds, stop, cut: stop === "max_tokens", deadline, units: spent, error };
+    // A message that ended in an error has no last stop of its own: the last completed call's
+    // would read as a clean stop or a false cut, so both say nothing and the error says why.
+    const stop = error ? "—" : (calls.at(-1)?.stop ?? "—");
+    const row = { choice, question, rounds, seconds, stop, cut: error ? null : stop === "max_tokens", deadline, units: spent, error };
     rows.push(row);
     console.error(`${label(choice)} ${choice.effort}: ${question} — ${rounds} rounds, ${seconds.toFixed(1)} s, ${stop}${error ? `, ${error}` : ""}`);
   }
@@ -151,11 +156,11 @@ const date = new Date().toISOString().slice(0, 10);
 const lines = [
   `# Effort on every model, measured on ${date}`,
   "",
-  `The example's questions asked once each through \`answer()\` over the fixture host, as a signed-in reader. Units are the meter's, one Sonnet 5 input token at $2 a million, and count the calls that completed; a call cut by its time reports no usage and counts nothing here.`,
+  `The example's questions asked once each through \`answer()\` over the fixture host, as a signed-in reader. Units are what the meter settled, one Sonnet 5 input token at $2 a million each. A message whose call was cut by its own time is marked by its error, \`busy\`, with no stop and no cut, and that call counts at the meter's estimate, as it settles a reader's cut call.`,
   "",
   "| Model | Effort | Question | Rounds | Seconds | Stop | Cut | Deadline final | Units | Dollars | Error |",
   "| --- | --- | --- | ---: | ---: | --- | --- | --- | ---: | ---: | --- |",
-  ...rows.map((r) => `| ${label(r.choice)} | ${r.choice.effort} | ${r.question} | ${r.rounds} | ${r.seconds.toFixed(1)} | ${r.stop} | ${r.cut ? "yes" : "no"} | ${r.deadline ? "yes" : "no"} | ${n(r.units)} | ${usd(r.units, 4)} | ${r.error} |`),
+  ...rows.map((r) => `| ${label(r.choice)} | ${r.choice.effort} | ${r.question} | ${r.rounds} | ${r.seconds.toFixed(1)} | ${r.stop} | ${r.cut === null ? "—" : r.cut ? "yes" : "no"} | ${r.deadline ? "yes" : "no"} | ${n(r.units)} | ${usd(r.units, 4)} | ${r.error} |`),
   "",
   `Total spent: ${n(total)} units (${usd(total)}).`,
 ];

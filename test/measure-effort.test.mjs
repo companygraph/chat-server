@@ -6,6 +6,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { estimateFor } from "../lib/meter.mjs";
 import { MODELS, EFFORTS } from "../lib/models.mjs";
+import { MAX_ROUNDS } from "../lib/shape.mjs";
 import { QUESTION_TITLES } from "./helpers.mjs";
 
 const script = fileURLToPath(new URL("../scripts/measure-effort.mjs", import.meta.url));
@@ -21,15 +22,16 @@ const offline = () => { const env = { ...process.env, ANTHROPIC_BASE_URL: "http:
 
 // Every model at low, and Fable and Opus at the four efforts above it.
 const matrix = [...Object.keys(MODELS).map((model) => ({ model, effort: "low" })), ...["claude-fable-5-1", "claude-opus-5-5"].flatMap((model) => EFFORTS.slice(1).map((effort) => ({ model, effort })))];
-const upper = (questions) => matrix.reduce((s, c) => s + estimateFor(c) * 5 * questions, 0).toLocaleString("en-US");
+const upper = (questions) => matrix.reduce((s, c) => s + estimateFor(c) * (MAX_ROUNDS + 1) * questions, 0).toLocaleString("en-US");
 
-test("with no flag the script estimates, calls nothing, and holds every call at its estimate for five calls a message", async () => {
+test("with no flag the script estimates, calls nothing, and holds every call at its estimate for the most calls a message can make", async () => {
   const { code, out } = await run([], offline());
   assert.equal(code, 0, out);
   const q = QUESTION_TITLES.length;
   assert.match(out, new RegExp(`^measure-effort: 13 choices × ${q} questions = ${13 * q} messages; nothing was called\\.$`, "m"));
   assert.equal(out.split("\n").filter((l) => /^\| (Sonnet|Opus|Fable|Haiku) /.test(l)).length, 13);
-  assert.match(out, /^\| Fable 5\.1 \| max \| 64,000 \| 1,690,000 \|/m);
+  const fableMax = estimateFor({ model: "claude-fable-5-1", effort: "max" }).toLocaleString("en-US");
+  assert.ok(out.split("\n").some((l) => l.startsWith(`| Fable 5.1 | max | 64,000 | ${fableMax} |`)), out);
   assert.match(out, new RegExp(`^Total: upper bound ${upper(q)} units`, "m"));
   assert.match(out, /^Likely: one round that calls the tools and then the answer/m);
 });
