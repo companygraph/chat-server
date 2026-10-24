@@ -2,7 +2,6 @@
 # variables' own validation, which `terraform validate` never does.
 mock_provider "google" {}
 mock_provider "google-beta" {}
-mock_provider "random" {}
 
 variables {
   project        = "example-project"
@@ -32,18 +31,24 @@ run "sign_in_with_user_month_plans" {
     sign_in           = { issuer = "https://id.example.test", project_id = "1", org_id = "2" }
     user_month_tokens = 2000000
   }
+  # The secret is the owner's: the service mounts it by name, latest version, and the module makes
+  # none, so the plan holds no resource of Secret Manager to assert on.
   assert {
-    condition     = length(google_secret_manager_secret.reader_secret) == 1
-    error_message = "sign_in makes the reader secret."
+    condition = [
+      for e in google_cloud_run_v2_service.chat.template[0].containers[0].env :
+      [e.value_source[0].secret_key_ref[0].secret, e.value_source[0].secret_key_ref[0].version]
+      if e.name == "CHAT_READER_SECRET"
+    ] == [["chat-reader-secret", "latest"]]
+    error_message = "sign_in mounts CHAT_READER_SECRET from chat-reader-secret, latest version."
   }
 }
 
-run "no_sign_in_makes_no_secret" {
+run "no_sign_in_mounts_no_secret" {
   command         = plan
   expect_failures = [check.run_host]
   assert {
-    condition     = length(google_secret_manager_secret.reader_secret) == 0
-    error_message = "without sign_in there is no reader secret."
+    condition     = length([for e in google_cloud_run_v2_service.chat.template[0].containers[0].env : e if e.name == "CHAT_READER_SECRET"]) == 0
+    error_message = "without sign_in there is no CHAT_READER_SECRET."
   }
 }
 
