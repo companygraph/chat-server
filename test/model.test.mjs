@@ -108,12 +108,18 @@ test("turnBoundsTheWholeStream", async () => {
   const head = ev("message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } });
   const { fetch: refusing } = fakeFetch();
   // A body that sends its first event and then nothing until the request's signal ends it, as
-  // a real fetch's body does on abort.
+  // a real fetch's body does on abort. A real body also holds the event loop open through its
+  // socket, and the turn's own time is an AbortSignal.timeout, whose timer holds nothing, so
+  // this body holds the loop with a timer of its own until the abort ends it. Without it, Node
+  // 22's test runner finds the loop empty after the first event and cancels the test; Node 26's
+  // runner keeps the loop open for a pending test, which hid it. The hold lapses by itself after
+  // two seconds, far past the turn's time, so a body that is never cut leaves no timer behind.
   const slow = async (url, init = {}) => {
     if (!String(url).endsWith("/v1/messages")) return refusing(url, init);
     const body = new ReadableStream({ start(c) {
       c.enqueue(new TextEncoder().encode(head));
-      init.signal?.addEventListener("abort", () => c.error(init.signal.reason), { once: true });
+      const held = setTimeout(() => {}, 2000);
+      init.signal?.addEventListener("abort", () => { clearTimeout(held); c.error(init.signal.reason); }, { once: true });
     } });
     return new Response(body, { headers: { "content-type": "text/event-stream" } });
   };
