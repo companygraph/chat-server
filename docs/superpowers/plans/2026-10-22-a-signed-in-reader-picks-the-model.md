@@ -15,7 +15,7 @@
 - The default and every visitor's model is `claude-sonnet-5` at effort `low`; nothing a visitor sends changes that.
 - Roles and model ids: `sonnet-5-5` → `claude-sonnet-5-5`, `opus` → `claude-opus-5-5`, `fable` → `claude-fable-5-1`, `haiku` → `claude-haiku-5-5`; every signed-in reader may also pick `claude-sonnet-5`.
 - Efforts: `low`, `medium`, `high`, `xhigh`, `max`; output limits 2400, 8000, 16000, 32000, 64000.
-- Meter unit: one `claude-sonnet-5` input token. Weights (input, cache write, cache read, output): Sonnet 5 and 5.5 `1, 1.25, 0.1, 5`; Opus 5.5 `2, 2.5, 0.1, 10`; Fable 5.1 `5, 6.25, 0.125, 25`; Haiku 5.5 `0.05, 0.0625, 0.005, 0.25`. Confirm every figure on Anthropic's price list before the release (Task B9).
+- Meter unit: one `claude-sonnet-5` input token. Weights (input, cache write, cache read, output): Sonnet 5 `1, 1.25, 0.1, 5`; Sonnet 5.5 `1, 1.25, 0.05, 5`; Opus 5.5 `2, 2.5, 0.1, 10`; Fable 5.1 `5, 6.25, 0.125, 25`; Haiku 5.5 `0.05, 0.0625, 0.005, 0.25`. Confirm every figure on Anthropic's price list before the release (Task B9).
 - A signed-in reader's calls count against the site's month and the reader's own month, never the day's share.
 - Each host starts at `user_month_tokens` 5000000 and keeps `month_tokens` 18500000.
 - No `thinking` field is sent; `tool_choice` stays `{ type: "none" }` on the final round only.

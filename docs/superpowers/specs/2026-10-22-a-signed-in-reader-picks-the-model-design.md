@@ -59,12 +59,12 @@ The meter's unit stays what `month_tokens` already counts, one input token of So
 | Model | Input | Cache write | Cache read | Output |
 | --- | --- | --- | --- | --- |
 | `claude-sonnet-5` | 1 | 1.25 | 0.1 | 5 |
-| `claude-sonnet-5-5` | 1 | 1.25 | 0.1 | 5 |
+| `claude-sonnet-5-5` | 1 | 1.25 | 0.05 | 5 |
 | `claude-opus-5-5` | 2 | 2.5 | 0.1 | 10 |
 | `claude-fable-5-1` | 5 | 6.25 | 0.125 | 25 |
 | `claude-haiku-5-5` | 0.05 | 0.0625 | 0.005 | 0.25 |
 
-These follow Anthropic's first-party prices on October 6, 2026 ($2 input and $10 output a million tokens for Sonnet 5 and 5.5, $4 and $20 for Opus 5.5, $10 and $50 for Fable 5.1, $0.10 and $0.50 for Haiku 5.5, cache reads at $0.20 for Sonnet 5.5 and Opus 5.5 and $0.25 for Fable 5.1), with a five-minute cache write at 1.25 times input; the builder confirms each figure on the price list before the release, and Haiku's cache read in particular. The reservation's estimate is the input estimate at the model's input weight plus the effort's output limit at its output weight, so the check before a call holds what the call could at most write, and settling returns the rest.
+These follow Anthropic's first-party prices on October 6, 2026 ($2 input and $10 output a million tokens for Sonnet 5 and 5.5, $4 and $20 for Opus 5.5, $10 and $50 for Fable 5.1, $0.10 and $0.50 for Haiku 5.5, cache reads at $0.20 for Sonnet 5, $0.10 for Sonnet 5.5, $0.20 for Opus 5.5, $0.25 for Fable 5.1 and $0.01 for Haiku 5.5), with a five-minute cache write at 1.25 times input; every figure was confirmed on Anthropic's pricing page on October 24, 2026, which corrected Sonnet 5.5's cache read from 0.1 to 0.05. Haiku 5.5's figures are its prices for a prompt of up to 100,000 tokens, over which the page charges five times as much, and the `us` inference region would add 1.1 times to every figure, which no deployment uses. The reservation's estimate is the input estimate at the model's input weight plus the effort's output limit at its output weight, so the check before a call holds what the call could at most write, and settling returns the rest.
 
 A signed-in reader's calls count against the site's month and against their own month, and not against the day's share, which keeps protecting the visitors: one question at `max` on Fable could otherwise spend most of a day and refuse every visitor until midnight in UTC. Their own month is kept in a Firestore document `chat-readers/<key>`, beside `chat/meter`, where the key is an HMAC of the token's `sub` under a secret of the deployment, so the meter holds no identifier ZITADEL would recognize. Their month over `user_month_tokens` is refused with a new code, `over_user_month`, with its `retryAt` at the first of the next month in UTC. The per-address limit of twenty an hour holds for everyone.
 

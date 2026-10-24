@@ -8,6 +8,7 @@ test("everyModelHasWeights", () => {
     for (const k of ["input", "cacheWrite", "cacheRead", "output"]) assert.equal(typeof m.weights[k], "number", `${id} ${k}`);
   }
   assert.deepEqual(MODELS["claude-sonnet-5"].weights, { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 });
+  assert.deepEqual(MODELS["claude-sonnet-5-5"].weights, { input: 1, cacheWrite: 1.25, cacheRead: 0.05, output: 5 });
   assert.deepEqual(MODELS["claude-fable-5-1"].weights, { input: 5, cacheWrite: 6.25, cacheRead: 0.125, output: 25 });
 });
 
