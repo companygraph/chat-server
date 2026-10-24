@@ -41,11 +41,13 @@
 ### Task A1: The repository and its bootstrap
 
 **Files:**
+
 - Create: `README.md`, `AGENTS.md`, `CLAUDE.md`, `LICENSE` (Apache-2.0), `conventions.json`, `pins.json`, `.github/dependabot.yml`, `.gitignore`, `.markdownlint-cli2.jsonc`, `deployment.json`
 - Create: `infra/bootstrap/main.tf`, `infra/bootstrap/README.md`
 - Create: `.github/workflows/conventions.yml`
 
 **Interfaces:**
+
 - Produces: `deployment.json` `{ "project": "id-blust-ch", "project_number": "<from bootstrap>", "billing_account": "011DEB-4A45A0-3A52BB", "region": "europe-west6", "domain": "id.blust.ch", "repository": "robertblust/id-blust-ch", "repository_id": "<from GitHub>", "budget_chf": <owner's figure> }`; the state bucket `id-blust-ch-tfstate`; the CI identity `deploy@id-blust-ch.iam.gserviceaccount.com` reachable by workload identity federation from this repository's `main` and its pull requests.
 
 - [ ] **Step 1: Create the repository** with `gh repo create robertblust/id-blust-ch --public`, and copy the layout of `robertblust/mcp-blust-ch` for everything listed above except the server; take `conventions/` through `pins.json`'s conventions pin, as that repository does.
@@ -57,11 +59,13 @@
 ### Task A2: ZITADEL on Cloud Run
 
 **Files:**
+
 - Create: `infra/main.tf`, `infra/database.tf`, `infra/secrets.tf`, `infra/run.tf`, `infra/domain.tf`, `infra/outputs.tf`, `infra/variables.tf`
 - Create: `.github/workflows/infra.yml`
 - Modify: `README.md` (owner's steps)
 
 **Interfaces:**
+
 - Consumes: `deployment.json` (Task A1).
 - Produces: `https://id.blust.ch` serving ZITADEL v4 with login v2; Secret Manager secrets `zitadel-masterkey`, `zitadel-db-password`, `zitadel-login-token`, `zitadel-admin-key`; output `dns_records`.
 
@@ -78,11 +82,13 @@
 ### Task A3: What ZITADEL holds
 
 **Files:**
+
 - Create: `zitadel/main.tf`, `zitadel/orgs.tf`, `zitadel/project.tf`, `zitadel/apps.tf`, `zitadel/policy.tf`, `zitadel/outputs.tf`, `sites.json`
 - Create: `.github/workflows/zitadel.yml`
 - Modify: `README.md`
 
 **Interfaces:**
+
 - Consumes: `https://id.blust.ch` and the `zitadel-admin-key` secret (Task A2).
 - Produces: output `sign_in` per site, `{ "<origin>": { "issuer": "https://id.blust.ch", "project_id": "…", "org_id": "…", "client_id": "…" } }`, which Tasks D1 and E1 copy; role keys `sonnet-5-5`, `opus`, `fable`, `haiku`.
 
@@ -102,11 +108,13 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B1: The model table and the request it builds
 
 **Files:**
+
 - Create: `lib/models.mjs`
 - Modify: `lib/model.mjs:40-102` (`MODEL`, `EFFORT`, `WEIGHTS`, `params`), `lib/model.mjs:120-150` (`over`, `turn`)
 - Test: `test/models.test.mjs`, `test/model.test.mjs`
 
 **Interfaces:**
+
 - Produces, in `lib/models.mjs`:
   - `DEFAULT_MODEL = "claude-sonnet-5"`, `DEFAULT_EFFORT = "low"`
   - `MODELS: Record<string, { label: string; role: string | null; weights: { input: number; cacheWrite: number; cacheRead: number; output: number } }>` with the five ids of the Global Constraints, `role: null` for `claude-sonnet-5`
@@ -125,10 +133,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B2: The meter at each model's price, and a reader's month
 
 **Files:**
+
 - Modify: `lib/meter.mjs`, `lib/errors.mjs`, `lib/platform.mjs`
 - Test: `test/meter.test.mjs`, `test/platform.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `MODELS`, `outputLimit` (Task B1).
 - Produces:
   - `units(usage, model = DEFAULT_MODEL): number` with that model's weights
@@ -147,10 +157,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B3: Configuration of sign-in
 
 **Files:**
+
 - Modify: `lib/config.mjs` (typedef `Config`, `configFromEnv`)
 - Test: `test/config.test.mjs`
 
 **Interfaces:**
+
 - Produces: `Config.signIn: { issuer: string; projectId: string; orgId: string; userMonthTokens: number; readerSecret: string; rolePrefix: string | null } | null`, read from `CHAT_OIDC_ISSUER`, `CHAT_OIDC_PROJECT`, `CHAT_OIDC_ORG`, `CHAT_USER_MONTH_TOKENS`, `CHAT_READER_SECRET` and, only in Task A3's per-site variant, `CHAT_OIDC_ROLE_PREFIX` (for example `blust-ch-`).
 
 - [ ] **Step 1: Write the failing tests**: `signInAbsentIsNull`; `signInAllFive` (the five variables give the object, `userMonthTokens` a number); `signInPartialRefused` (any of the five missing throws naming the missing ones, as `federationFromEnv` does); `signInIssuerIsHttps` (`http://` refused); `signInNeedsReaderMeter` (`CHAT_METER=table` with sign-in throws `sign-in needs CHAT_METER firestore or memory`).
@@ -162,11 +174,13 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B4: The token and its grants
 
 **Files:**
+
 - Create: `lib/signin.mjs`
 - Modify: `package.json` (dependency `jose` `^6.1.0`), `package-lock.json`
 - Test: `test/signin.test.mjs`
 
 **Interfaces:**
+
 - Consumes: `Config.signIn` (Task B3), `MODELS`, `DEFAULT_MODEL` (Task B1), `ChatError` codes (Task B2).
 - Produces:
   - `signInVerifier(signIn, { jwks } = {}) → { reader(authorization: string | undefined): Promise<Reader | null> }`, where `jwks` defaults to `createRemoteJWKSet(new URL(signIn.issuer + "/oauth/v2/keys"))`; no header gives `null`; a header not `Bearer <jwt>`, or a token failing `jwtVerify(token, jwks, { issuer: signIn.issuer, audience: signIn.projectId })`, throws `ChatError("signed_out", ...)`
@@ -182,10 +196,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B5: The request chooses, the loop answers with the choice
 
 **Files:**
+
 - Modify: `lib/http.mjs` (preflight, POST, GET), `lib/loop.mjs:504-641` (`answer`), `lib/shape.mjs` (`chosen`)
 - Test: `test/http.test.mjs`, `test/loop.test.mjs`, `test/shape.test.mjs`
 
 **Interfaces:**
+
 - Consumes: Tasks B1–B4.
 - Produces:
   - `Services` gains `signIn: ReturnType<typeof signInVerifier> | null` and `readers: ((key: string) => Promise<ReaderMeter>) | null`
@@ -202,10 +218,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B6: The process, the page and the report
 
 **Files:**
+
 - Modify: `bin/http.mjs`, `lib/page.mjs:88-89`, `lib/report.mjs`, `README.md`
 - Test: `test/page.test.mjs`, `test/report.test.mjs`
 
 **Interfaces:**
+
 - Consumes: Tasks B2–B5.
 
 - [ ] **Step 1: Write the failing tests**: `pageNamesThePick` (with `config.signIn` set the sentence reads `through Claude Sonnet 5, or the model a signed-in reader picks, on the Anthropic API, and adds nothing the tools did not say.`; without it, today's sentence unchanged); `reportCountsByModel` (questions with `model` fields give a `By model` table with a count per model id; lines without `model` count as `claude-sonnet-5`).
@@ -217,11 +235,13 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B7: The deployment carries sign-in
 
 **Files:**
+
 - Modify: `deploy/build/config.mjs` (`chatProblems`), `deploy/google/terraform/variables.tf`, `deploy/google/terraform/run.tf`, `deploy/google/terraform/main.tf` (APIs), `.github/workflows/deploy-google.yml` (live check)
 - Create: `deploy/google/terraform/signin.tf`
 - Test: `test/deploy-config.test.mjs`
 
 **Interfaces:**
+
 - Consumes: the env names of Task B3.
 - Produces: module variables `sign_in = object({ issuer = string, project_id = string, org_id = string, role_prefix = optional(string) })`, default `null`, and `user_month_tokens = number`, default `null`, required when `sign_in` is set; `chat.json` keys `sign_in` (`{ issuer, project_id, org_id, client_id, role_prefix? }`; `client_id` is the widget's and is checked but not passed) and `user_month_tokens`.
 
@@ -234,10 +254,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task B8: Effort on every model, measured
 
 **Files:**
+
 - Create: `scripts/measure-effort.mjs`
 - Modify: `lib/models.mjs` only if the measurement says so; the spec's section 6 gains the measured figures
 
 **Interfaces:**
+
 - Consumes: Tasks B1 and B5; a key in `ANTHROPIC_API_KEY` from the owner's shell, never a file.
 
 - [ ] **Step 1: Ask the owner** to approve the spend: one replay of the last weekly report's answered questions per model at `low`, and at every effort on Fable 5.1 and Opus 5.5, through the fixture host, about the figure the script prints first as its estimate.
@@ -258,10 +280,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task C1: The command line's four words and the sign-in pure parts
 
 **Files:**
+
 - Modify: `assets/chat.js` (`command`, `strings`, the `rbChat` export list and its header comment, a new section `// ─── Sign-in ───` beside `// ─── The terminal ───`)
 - Test: `test/chat.test.mjs`
 
 **Interfaces:**
+
 - Produces, exported on `window.rbChat`:
   - `command(text)` also returns `"login"`, `"logout"`, `"model"`, `"effort"` for `/login`, `/logout`, `/model`, `/effort`
   - `CHAT_MODELS`: `[{ id: "claude-sonnet-5", label: "Sonnet 5", role: null }, { id: "claude-sonnet-5-5", label: "Sonnet 5.5", role: "sonnet-5-5" }, { id: "claude-opus-5-5", label: "Opus 5.5", role: "opus" }, { id: "claude-fable-5-1", label: "Fable 5.1", role: "fable" }, { id: "claude-haiku-5-5", label: "Haiku 5.5", role: "haiku" }]` and `CHAT_EFFORTS` the five efforts, the same as chat-server's table
@@ -280,10 +304,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task C2: Signing in and out
 
 **Files:**
+
 - Modify: `assets/chat.js` (the panel's `send()` dispatch at the `command(typed)` branch, start-up after `ENDPOINT` is read)
 - Create: `test/chat-signin.test.mjs`, `test/fixtures/issuer.mjs`
 
 **Interfaces:**
+
 - Consumes: Task C1.
 - Produces: the tag attributes `data-issuer`, `data-client`, `data-org`, `data-project`, optional `data-role-prefix`; `localStorage` key `chat-signin` holding `{ access, id }`; `sessionStorage` key `chat-pkce` holding `{ verifier, state, path }` across the redirect.
 
@@ -297,10 +323,12 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 ### Task C3: Choosing the model and the effort
 
 **Files:**
+
 - Modify: `assets/chat.js` (menus, the request at the `fetch(ENDPOINT, ...)` call, the cite line, the refusal path, `TIMEOUT`)
 - Create: `test/chat-model.test.mjs`
 
 **Interfaces:**
+
 - Consumes: Tasks C1 and C2; `done.by` and the codes of Part B.
 - Produces: `localStorage` key `chat-choice` holding `{ model, effort }`; the optional tag attribute `data-chat-direct`.
 
@@ -319,9 +347,11 @@ Work on the branch `a-signed-in-reader-picks-the-model`, which holds the spec.
 Do this once per host, in the order `robertblust/mcp-blust-ch`, `companygraph/mcp-companygraph-io`, `guestgraph/mcp-guestgraph-io`, each merged and checked before the next begins.
 
 **Files (per host):**
+
 - Modify: `chat/chat.json`, `infra/chat/main.tf`, and through `pins.json`'s move every place that names the chat-server release (`chat/package.json`, `chat/package-lock.json`, `.github/workflows/chat.yml`, `.github/workflows/report.yml`, `infra/chat/main.tf`'s `?ref=`), `README.md`'s "The chat"
 
 **Interfaces:**
+
 - Consumes: Task A3's `sign_in` output for the host's site; release `v0.38.0` (Task B9).
 
 - [ ] **Step 1: Move the pin** to `v0.38.0` with the host's `pins.json` move command; expected every place above names `v0.38.0` and `npm install` succeeds in `chat/`.
@@ -339,9 +369,11 @@ Do this once per host, in the order `robertblust/mcp-blust-ch`, `companygraph/mc
 Once per site, after its host's Task D1: `robertblust/robertblust.github.io`, then the companygraph.io and guestgraph.io site repositories.
 
 **Files (per site):**
+
 - Modify: `package.json` (`@robertblust/design` to the Part C release), the synced `chat.js` and `chat.css` by `npm run design`, every page or generator that writes `<script src="chat.js" data-chat=...>` (find them with `grep -rl 'data-chat=' --exclude-dir=node_modules .`), the privacy page in English and German
 
 **Interfaces:**
+
 - Consumes: Task A3's output for the site; the Part C release; Task D1 Step 5's finding on `data-chat-direct`.
 
 - [ ] **Step 1: Take the release** and run `npm run design` and `npm run design:check`; expected no difference left.
