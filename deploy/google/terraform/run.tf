@@ -143,7 +143,7 @@ resource "google_cloud_run_v2_service" "chat" {
         }
       }
       # Sign-in: the five values the service takes together or not at all, and the optional role
-      # prefix. The reader secret is the module's own (signin.tf), latest version.
+      # prefix.
       dynamic "env" {
         for_each = local.sign_in_env
         content {
@@ -151,13 +151,21 @@ resource "google_cloud_run_v2_service" "chat" {
           value = env.value
         }
       }
+      # The reader secret keys a signed-in reader's month: chat-readers/<key> is named by the
+      # HMAC-SHA256 of the token's sub under it, so the meter holds nothing the identity service
+      # would recognize, and rotating it gives every reader a fresh month. With sign_in it rides
+      # in from the project's secret, latest version. The secret is the owner's, as the Anthropic
+      # key's is: the owner makes it, adds a random first version and grants the runtime read
+      # access before the deploy, as the owner's steps say. The module neither makes it nor grants
+      # access to it, so a deploy before the owner's three commands fails at Cloud Run's own
+      # check, by name.
       dynamic "env" {
         for_each = var.sign_in == null ? [] : [1]
         content {
           name = "CHAT_READER_SECRET"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.reader_secret[0].secret_id
+              secret  = "chat-reader-secret"
               version = "latest"
             }
           }
@@ -172,7 +180,7 @@ resource "google_cloud_run_v2_service" "chat" {
       }
     }
   }
-  depends_on = [google_project_service.chat, google_firestore_database.meter, google_project_iam_member.chat, google_secret_manager_secret_version.reader_secret, google_secret_manager_secret_iam_member.reader_secret]
+  depends_on = [google_project_service.chat, google_firestore_database.meter, google_project_iam_member.chat]
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public" {

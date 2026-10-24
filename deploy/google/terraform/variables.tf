@@ -90,7 +90,7 @@ variable "verdict_threshold" {
 # Readers who sign in at ZITADEL and choose the model. The service checks a token's issuer, the
 # project it was issued for and the organization the reader belongs to; role_prefix narrows which
 # roles count. chat.json's sign_in also holds the widget's client_id, which this object does not
-# name and so drops: the service has no use for it. The reader secret is made by the module.
+# name and so drops: the service has no use for it. The reader secret is the owner's (run.tf).
 variable "sign_in" {
   type = object({
     issuer      = string
