@@ -24,6 +24,15 @@ locals {
       ANTHROPIC_WORKSPACE_ID       = var.anthropic_federation.workspace_id
     } : k => v if v != null
   }
+  sign_in_env = var.sign_in == null ? {} : {
+    for k, v in {
+      CHAT_OIDC_ISSUER       = var.sign_in.issuer
+      CHAT_OIDC_PROJECT      = var.sign_in.project_id
+      CHAT_OIDC_ORG          = var.sign_in.org_id
+      CHAT_USER_MONTH_TOKENS = tostring(var.user_month_tokens)
+      CHAT_OIDC_ROLE_PREFIX  = var.sign_in.role_prefix
+    } : k => v if v != null
+  }
 }
 
 resource "google_cloud_run_v2_service" "chat" {
@@ -36,8 +45,9 @@ resource "google_cloud_run_v2_service" "chat" {
     service_account                  = google_service_account.chat.email
     max_instance_request_concurrency = 20
     # A message is at most five model calls of sixty seconds each, and a request cut off part way
-    # through one is a visitor left with half an answer.
-    timeout = "300s"
+    # through one is a visitor left with half an answer. A signed-in reader may choose a model
+    # whose calls run longer, so with sign_in the limit rises to fifteen minutes.
+    timeout = var.sign_in == null ? "300s" : "900s"
     scaling {
       min_instance_count = 0
       max_instance_count = 3
@@ -132,6 +142,27 @@ resource "google_cloud_run_v2_service" "chat" {
           value = tostring(var.verdict_threshold)
         }
       }
+      # Sign-in: the five values the service takes together or not at all, and the optional role
+      # prefix. The reader secret is the module's own (signin.tf), latest version.
+      dynamic "env" {
+        for_each = local.sign_in_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      dynamic "env" {
+        for_each = var.sign_in == null ? [] : [1]
+        content {
+          name = "CHAT_READER_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.reader_secret[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
       dynamic "env" {
         for_each = local.federation_env
         content {
@@ -141,7 +172,7 @@ resource "google_cloud_run_v2_service" "chat" {
       }
     }
   }
-  depends_on = [google_project_service.chat, google_firestore_database.meter, google_project_iam_member.chat]
+  depends_on = [google_project_service.chat, google_firestore_database.meter, google_project_iam_member.chat, google_secret_manager_secret_version.reader_secret, google_secret_manager_secret_iam_member.reader_secret]
 }
 
 resource "google_cloud_run_v2_service_iam_member" "public" {

@@ -26,3 +26,21 @@ test("a missing variable is one line on stderr and exit 2", async () => {
   assert.ok(!err.includes("    at "), "no stack");
   assert.equal(child.exitCode, 2);
 });
+
+test("with sign-in configured the process names the issuer and still serves a visitor", async () => {
+  const fixture = await startFixtureHost();
+  after(() => fixture.close());
+  const issuer = "https://id.example.test";
+  const env = { ...process.env, CHAT_MCP_URL: fixture.url, CHAT_ORIGINS: "https://site.test", CHAT_MONTH_TOKENS: "1000000", CHAT_PROJECT: "p", CHAT_REGION: "eu", CHAT_METER: "memory", PORT: "0", CHAT_OIDC_ISSUER: issuer, CHAT_OIDC_PROJECT: "project-1", CHAT_OIDC_ORG: "org-1", CHAT_USER_MONTH_TOKENS: "1000", CHAT_READER_SECRET: "secret" };
+  const child = spawn(process.execPath, [bin, "--model", "fake"], { env });
+  after(() => child.kill());
+  const start = await new Promise((resolve) => child.stdout.on("data", (d) => { for (const l of String(d).split("\n")) if (l.includes("chat.start")) resolve(JSON.parse(l)); }));
+  assert.equal(start.sign_in, issuer);
+  assert.match(start.message, /sign-in https:\/\/id\.example\.test/);
+  const base = `http://127.0.0.1:${start.port}`;
+  assert.equal((await (await fetch(`${base}/chat`)).json()).sign_in, issuer);
+  const r = await fetch(`${base}/chat`, { method: "POST", headers: { "x-chat": "1", "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "hello" }], lang: "en" }) });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type") ?? "", /text\/event-stream/);
+  assert.match(await r.text(), /event: done/);
+});

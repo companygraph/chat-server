@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { meterStore, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
+import { meterStore, readerStore, firestoreReaders, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 import { TableStore } from "../lib/platform/azure/meter.mjs";
@@ -87,4 +87,39 @@ test("a platform this release has no adapter for is refused by name, before anyt
 
 test("the questions of a deployment on Azure come from Log Analytics", async () => {
   assert.equal(await questionSource("azure"), azureQuestions);
+});
+
+test("readerStoreMemoryPerKey keeps one store for each key", async () => {
+  const a = await readerStore("memory", "key-a"), b = await readerStore("memory", "key-b");
+  assert.ok(a instanceof MemoryStore && b instanceof MemoryStore);
+  assert.notEqual(a, b);
+  assert.equal(await readerStore("memory", "key-a"), a);
+});
+
+test("readerStore on firestore keeps the reader at their own path", async () => {
+  const store = await readerStore("firestore", "abc", { firestore: async (key) => new FirestoreStore({ db: { doc: (p) => ({ p }) }, path: "chat-readers/" + key }) });
+  assert.equal(store.ref.p, "chat-readers/abc");
+});
+
+test("readerStoreTableRefused says what sign-in needs", async () => {
+  await assert.rejects(readerStore("table", "k"), (e) => e.message === "CHAT_METER=table keeps no readers' months; sign-in needs firestore or memory");
+});
+
+test("readerStore called twice at once for one key gives one store", async () => {
+  const [a, b] = await Promise.all([readerStore("memory", "key-race"), readerStore("memory", "key-race")]);
+  assert.equal(a, b);
+});
+
+// One Firestore client for every reader's month: a client a message opened and never closed
+// would hold its channel for the life of the process.
+test("readerStoreFirestoreSharesOneClient", async () => {
+  let opened = 0;
+  const db = { doc: (p) => ({ p }) };
+  const adapters = { firestore: firestoreReaders(async () => { opened++; return db; }) };
+  const [a, b] = await Promise.all([readerStore("firestore", "abc", adapters), readerStore("firestore", "def", adapters)]);
+  const c = await readerStore("firestore", "abc", adapters);
+  assert.equal(opened, 1, "the client is made once, on the first reader");
+  assert.ok(a.db === db && b.db === db && c.db === db);
+  assert.equal(a.ref.p, "chat-readers/abc");
+  assert.equal(b.ref.p, "chat-readers/def");
 });

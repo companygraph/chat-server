@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { answer, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
+import { answer, MESSAGE_DEADLINE_MS, namesIn, namesPastTheCap, NAME_CAP, foundNothing, diagramOf, diagramNote, restsOf, restsNote } from "../lib/loop.mjs";
 import { connectHost } from "../lib/host.mjs";
-import { Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
+import { Meter, MemoryStore, ReaderMeter, ESTIMATE, estimateFor, units } from "../lib/meter.mjs";
+import { overForTest } from "../lib/model.mjs";
 import { MAX_ROUNDS, MAX_TOOL_RESULT_CHARS, LIST_PAGE } from "../lib/shape.mjs";
 import { FINAL_NOTE } from "../lib/model.mjs";
+import { ChatError } from "../lib/errors.mjs";
 import { NAME_NOTE, nameNote, DIAGRAM_RULE, FACTS_RULE } from "../lib/prompt.mjs";
 import { startFixtureHost, EXAMPLE_ROOT, exampleSnapshot } from "./helpers.mjs";
 
@@ -38,6 +40,7 @@ function fakeModel(script) {
     async turn(request, onText, opts) {
       requests.push(request);
       options.push(opts);
+      opts?.onStart?.();
       const msg = script.shift();
       for (const c of msg.content) if (c.type === "text") onText(c.text);
       return msg;
@@ -1184,4 +1187,263 @@ test("an extension the picture left out is not stated as departing from a step",
   const note = JSON.parse(diagramNote(diagramOf("diagram", { isError: false, data })));
   assert.equal(note.relations.length, 5);
   assert.ok(!JSON.stringify(note.relations).includes("9a"));
+});
+
+// The choice a request carries reaches the model, is named in `done`, and is paid for twice by a
+// signed-in reader: on the site's month and on their own, never on the day's share, which is the
+// visitors'.
+const OPUS_HIGH = { model: "claude-opus-5-5", effort: "high" };
+const readerMeter = (monthTokens = 5_000_000) => new ReaderMeter(new MemoryStore(), { monthTokens });
+const ask = [{ role: "user", content: "what is it?" }];
+
+test("choiceReachesRequest", async () => {
+  const model = fakeModel([textTurn("ok")]);
+  await answer({ host, model, meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(model.requests[0].model, "claude-opus-5-5");
+  assert.equal(model.requests[0].max_tokens, 16000);
+  assert.deepEqual(model.requests[0].output_config, { effort: "high" });
+  assert.equal(model.options[0].timeoutMs, 840_000, "a call above low may run past the minute");
+  const visitor = fakeModel([textTurn("ok")]);
+  await answer({ host, model: visitor, meter: meter() }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(visitor.requests[0].model, "claude-sonnet-5");
+  assert.equal(visitor.requests[0].max_tokens, 2400);
+  assert.equal(visitor.options[0].timeoutMs, 60_000);
+});
+
+test("doneNamesBy", async () => {
+  const { events, emit } = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, emit);
+  const done = events.find(([e]) => e === "done")[1];
+  assert.deepEqual(done.by, OPUS_HIGH);
+  assert.equal(done.model.repo, "companygraph/meta-model", "`model` stays the knowledge model's provenance");
+  const visitor = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: meter() }, { messages: ask, lang: "en" }, visitor.emit);
+  assert.deepEqual(visitor.events.find(([e]) => e === "done")[1].by, { model: "claude-sonnet-5", effort: "low" });
+});
+
+test("refusalDeclines", async () => {
+  const m = meter();
+  const { events, emit } = collect();
+  await assert.rejects(
+    answer({ host, model: fakeModel([{ content: [{ type: "text", text: "I won't" }], stop_reason: "refusal", usage }]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, emit),
+    (err) => err.code === "declined" && err.status === 422 && err.message === "the model declined to answer this question",
+  );
+  assert.deepEqual(events, [], "nothing of a declined round is sent");
+  assert.equal((await m.state()).monthTokens, 1000 * 2 + 100 * 10, "the declined call is paid for at its price");
+});
+
+test("readerCountsTwice", async () => {
+  const m = meter(), r = readerMeter();
+  const { events, emit } = collect();
+  await answer({ host, model: fakeModel([textTurn("ok")]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, emit);
+  const cost = 1000 * 2 + 100 * 10;
+  const site = await m.state();
+  assert.equal(site.monthTokens, cost);
+  assert.equal(site.dayTokens, 0, "a reader never spends the day's share");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost);
+  assert.equal(events.find(([e]) => e === "done")[1].spent, cost);
+  assert.equal(events.find(([e]) => e === "done")[1].dayLeft, m.dayShare, "dayLeft stays the site's day");
+});
+
+test("readerRefusalGivesBackSite", async () => {
+  const m = meter(), r = readerMeter(estimateFor(OPUS_HIGH) - 1);
+  const model = fakeModel([textTurn("ok")]);
+  await assert.rejects(
+    answer({ host, model, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit),
+    (err) => err.code === "over_user_month",
+  );
+  assert.equal(model.requests.length, 0, "the model is never asked");
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0, "the site's reservation is given back");
+  assert.equal(site.dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, 0);
+});
+
+// A store fault settling one hold does not leave the other booked, and the fault goes on. The
+// call reached the model, so a reader's holds settle at the estimate rather than at nothing.
+test("eachHoldGivenBackAlone", async () => {
+  const gone = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new Error("model gone"); } };
+  const site = meter(), r = readerMeter();
+  site.settle = async () => { throw new Error("site store down"); };
+  await assert.rejects(answer({ host, model: gone, meter: site }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /site store down/);
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH), "the reader's hold is settled");
+  const site2 = meter(), r2 = readerMeter();
+  r2.settle = async () => { throw new Error("reader store down"); };
+  await assert.rejects(answer({ host, model: gone, meter: site2 }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r2 }, collect().emit), /reader store down/);
+  assert.equal((await site2.state()).monthTokens, estimateFor(OPUS_HIGH), "the site's hold is settled");
+});
+
+// A reader's call that reached the model and was cut, by a fault or by the reader leaving, may
+// have been paid for in full, and its usage is not known: both months keep the estimate. A
+// visitor's keeps today's nothing, which the day's share bounds.
+test("readerAbortSettlesAtEstimate", async () => {
+  const gone = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new Error("model gone"); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: gone, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /model gone/);
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH), "the site's month keeps the estimate");
+  assert.equal((await m.state()).dayTokens, 0, "and the day's share is still not the reader's");
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH), "the reader's month keeps the estimate");
+  const ac = new AbortController();
+  const left = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); ac.abort(); throw Object.assign(new Error("aborted"), { name: "AbortError" }); } };
+  const m2 = meter(), r2 = readerMeter();
+  await assert.rejects(answer({ host, model: left, meter: m2 }, { messages: ask, lang: "en", signal: ac.signal, choice: OPUS_HIGH, reader: r2 }, collect().emit), /aborted/);
+  assert.equal((await m2.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await r2.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+// A call the provider refused before its stream began never reached the model: a 429, a
+// credential or its exchange, a client that would not build. Both months are where they were.
+test("readerBusyBeforeStartChargesNothing", async () => {
+  const busy = { name: "fake", async turn() { throw new ChatError("busy", "the model is busy; try again in a minute", { retryAt: 0 }); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: busy, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0, "the site's hold is given back");
+  assert.equal(site.dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, 0, "and the reader's");
+});
+
+// The same fault once the stream has begun is a call that reached the model: the estimate on both.
+test("readerFaultAfterStartChargesEstimate", async () => {
+  const cut = { name: "fake", async turn(_r, _t, { onStart }) { onStart(); throw new ChatError("busy", "the model is busy; try again in a minute", { retryAt: 0 }); } };
+  const m = meter(), r = readerMeter();
+  await assert.rejects(answer({ host, model: cut, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await m.state()).dayTokens, 0);
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+test("visitorAbortSettlesAtZero", async () => {
+  const gone = { name: "fake", async turn() { throw new Error("model gone"); } };
+  const m = meter();
+  await assert.rejects(answer({ host, model: gone, meter: m }, { messages: ask, lang: "en" }, collect().emit), /model gone/);
+  const site = await m.state();
+  assert.equal(site.monthTokens, 0);
+  assert.equal(site.dayTokens, 0);
+});
+
+// The reader's month refused at the second call: the first call's cost stands on both months,
+// and the second's hold on the site is given back, since that call never reached the model.
+test("readerRefusedAfterToolRoundGivesBackSite", async () => {
+  const cost = 1000 * 2 + 100 * 10;
+  const m = meter(), r = readerMeter(estimateFor(OPUS_HIGH) + cost - 1);
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("never")]);
+  await assert.rejects(
+    answer({ host, model, meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit),
+    (err) => err.code === "over_user_month",
+  );
+  assert.equal(model.requests.length, 1);
+  assert.equal((await m.state()).monthTokens, cost, "the site keeps the first call alone");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost);
+});
+
+// A message that has run so long that a call at its effort could outlast the deadline answers
+// from what it has, in a final request, rather than being cut by the platform mid-call.
+test("deadlineMakesRoundFinal", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("It is the company.")]);
+  const turn = model.turn;
+  model.turn = async (...args) => { const msg = await turn(...args); t = start + MESSAGE_DEADLINE_MS - 60_000 + 1; return msg; };
+  const { events, emit } = collect();
+  await answer({ host, model, meter: meter(), now: () => t }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, emit);
+  assert.equal(MESSAGE_DEADLINE_MS, 870_000);
+  assert.equal(model.requests.length, 2);
+  assert.equal(model.requests[0].tool_choice, undefined, "the first round had the time");
+  assert.deepEqual(model.requests[1].tool_choice, { type: "none" }, "the second is final");
+  assert.equal(model.requests[1].messages.at(-1).content.at(-1).text, FINAL_NOTE);
+  assert.equal(events.at(-1)[0], "done");
+  // A minute left exactly is a minute's call, and the round goes on as any other.
+  t = start;
+  const enough = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn2 = enough.turn;
+  enough.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 60_000; return msg; };
+  await answer({ host, model: enough, meter: meter(), now: () => t }, { messages: [{ role: "user", content: "loop" }], lang: "en" }, collect().emit);
+  assert.equal(enough.requests[1].tool_choice, undefined);
+});
+
+// The round the deadline makes final may not run past it either: its call is given the time
+// the message has left, never less than a second, so the platform's cut never falls mid-answer.
+test("finalRoundTimeoutCapped", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const model = fakeModel([toolTurn("list_types", {}), textTurn("It is the company.")]);
+  const turn = model.turn;
+  model.turn = async (...args) => { const msg = await turn(...args); t = start + 100_000; return msg; };
+  await answer({ host, model, meter: meter(), now: () => t }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(model.options[0].timeoutMs, 840_000, "the first round had the time");
+  assert.deepEqual(model.requests[1].tool_choice, { type: "none" }, "the second is final");
+  assert.equal(model.options[1].timeoutMs, MESSAGE_DEADLINE_MS - 100_000, "and is given what is left");
+  t = start;
+  const late = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn2 = late.turn;
+  late.turn = async (...args) => { const msg = await turn2(...args); t = start + MESSAGE_DEADLINE_MS - 10; return msg; };
+  await answer({ host, model: late, meter: meter(), now: () => t }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(late.options[1].timeoutMs, 1000, "a call is never given less than a second");
+});
+
+// A reader's final call that the deadline cuts after its stream began reached the model, and
+// keeps its estimate on both months; the reader is told busy.
+test("readerFinalCallCutAtDeadlineSettlesAtEstimate", async () => {
+  let t = 1_000_000;
+  const start = t;
+  const hanging = overForTest(async () => ({ messages: { stream: (_r, { signal }) => {
+    const listeners = {};
+    return {
+      on(event, listener) { (listeners[event] ??= []).push(listener); },
+      finalMessage: () => new Promise((_ok, fail) => {
+        for (const l of listeners.streamEvent ?? []) l({ type: "message_start" }, {});
+        signal.addEventListener("abort", () => fail(Object.assign(new Error("Request was aborted."), { name: "APIUserAbortError" })), { once: true });
+      }),
+    };
+  } } }));
+  const m = meter(), r = readerMeter();
+  const clock = () => { const now = t; t = start + MESSAGE_DEADLINE_MS - 50; return now; };
+  const t0 = Date.now();
+  await assert.rejects(answer({ host, model: hanging, meter: m, now: clock }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), (err) => err.code === "busy");
+  assert.ok(Date.now() - t0 < 3000, "the call was cut at the floor's second, not left to run");
+  assert.equal((await m.state()).monthTokens, estimateFor(OPUS_HIGH));
+  assert.equal((await r.settle(0, 0)).monthTokens, estimateFor(OPUS_HIGH));
+});
+
+// A call that completed knows its cost: a store that fails settling it is asked again in the
+// `finally` at that cost, not at a cut call's estimate or nothing.
+test("completedCallSettlesAtCostOnRetry", async () => {
+  const flaky = (meterLike) => {
+    const settle = meterLike.settle.bind(meterLike);
+    let first = true;
+    meterLike.settle = async (...args) => { if (first) { first = false; throw new Error("store blinked"); } return settle(...args); };
+    return meterLike;
+  };
+  const m = flaky(meter()), r = readerMeter();
+  await assert.rejects(answer({ host, model: fakeModel([textTurn("ok")]), meter: m }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: r }, collect().emit), /store blinked/);
+  const cost = units(usage, OPUS_HIGH.model);
+  assert.equal((await m.state()).monthTokens, cost, "the site's month keeps the call's cost");
+  assert.equal((await r.settle(0, 0)).monthTokens, cost, "and so does the reader's, whose settle the fault skipped");
+  const v = flaky(meter());
+  await assert.rejects(answer({ host, model: fakeModel([textTurn("ok")]), meter: v }, { messages: ask, lang: "en" }, collect().emit), /store blinked/);
+  const visitorCost = units(usage, "claude-sonnet-5");
+  assert.equal((await v.state()).monthTokens, visitorCost, "a visitor's completed call is its cost too");
+  assert.equal((await v.state()).dayTokens, visitorCost);
+});
+
+// Which calls the time bounds whole: a reader's, and any the message's deadline cut below its
+// effort's time. A visitor's ordinary call is bound only until its headers, as at v0.37.0.
+test("visitorCallBoundWholeOnlyWhereTheDeadlineCutsIt", async () => {
+  const visitor = fakeModel([textTurn("ok")]);
+  await answer({ host, model: visitor, meter: meter() }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(visitor.options[0].timeoutMs, 60_000);
+  assert.equal(visitor.options[0].whole, false);
+  const reader = fakeModel([textTurn("ok")]);
+  await answer({ host, model: reader, meter: meter() }, { messages: ask, lang: "en", choice: OPUS_HIGH, reader: readerMeter() }, collect().emit);
+  assert.equal(reader.options[0].whole, true);
+  let t = 1_000_000;
+  const start = t;
+  const late = fakeModel([toolTurn("list_types", {}), textTurn("ok")]);
+  const turn = late.turn;
+  late.turn = async (...args) => { const msg = await turn(...args); t = start + MESSAGE_DEADLINE_MS - 30_000; return msg; };
+  await answer({ host, model: late, meter: meter(), now: () => t }, { messages: ask, lang: "en" }, collect().emit);
+  assert.equal(late.options[0].whole, false);
+  assert.equal(late.options[1].timeoutMs, 30_000, "the deadline cut the visitor's last call below its minute");
+  assert.equal(late.options[1].whole, true, "and that call is bound whole");
 });

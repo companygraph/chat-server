@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MODEL, EFFORT, WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, credentialFault, overForTest } from "../lib/model.mjs";
+import { DEFAULT_MODEL, DEFAULT_EFFORT } from "../lib/models.mjs";
+import { WEIGHTS, FINAL_NOTE, params, vertexModel, anthropicModel, modelFor, asChatError, credentialFault, overForTest } from "../lib/model.mjs";
 import { googleIdentityToken, METADATA_IDENTITY_URL } from "../lib/platform/google/identity.mjs";
 import { MAX_OUTPUT_TOKENS } from "../lib/shape.mjs";
 
@@ -8,17 +9,158 @@ const tools = [{ name: "search", description: "d", input_schema: { type: "object
 
 test("a request names the model, the effort, the output limit, and marks the prefix for caching", () => {
   const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }] });
-  assert.equal(r.model, MODEL);
-  assert.equal(MODEL, "claude-sonnet-5");
+  assert.equal(r.model, DEFAULT_MODEL);
+  assert.equal(DEFAULT_MODEL, "claude-sonnet-5");
   assert.equal(r.max_tokens, MAX_OUTPUT_TOKENS);
   assert.equal(MAX_OUTPUT_TOKENS, 2400);
-  assert.deepEqual(r.output_config, { effort: EFFORT });
+  assert.deepEqual(r.output_config, { effort: DEFAULT_EFFORT });
   assert.deepEqual(r.system, [{ type: "text", text: "S", cache_control: { type: "ephemeral" } }]);
   assert.equal(r.tools[1].cache_control, undefined, "the system mark already covers the tools before it");
   assert.equal(r.tools[0].cache_control, undefined);
   assert.deepEqual(r.messages, [{ role: "user", content: [{ type: "text", text: "q", cache_control: { type: "ephemeral" } }] }]);
   assert.equal(r.tool_choice, undefined);
   assert.equal(r.thinking, undefined);
+});
+
+test("paramsTakeTheChoice", () => {
+  const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }], choice: { model: "claude-opus-5-5", effort: "high" } });
+  assert.equal(r.model, "claude-opus-5-5");
+  assert.equal(r.max_tokens, 16000);
+  assert.equal(r.output_config.effort, "high");
+  assert.equal("thinking" in r, false);
+});
+
+test("paramsDefaultIsToday", () => {
+  const r = params({ system: "S", tools, messages: [{ role: "user", content: "q" }] });
+  assert.equal(r.model, "claude-sonnet-5");
+  assert.equal(r.max_tokens, 2400);
+  assert.equal(r.output_config.effort, "low");
+});
+
+test("turnPassesTimeout", async () => {
+  const seen = [];
+  const m = overForTest(async () => ({ messages: { stream: (_r, options) => { seen.push(options); return { on() {}, finalMessage: async () => ({ content: [], stop_reason: "end_turn", usage: {} }) }; } } }));
+  const ac = new AbortController();
+  await m.turn({}, () => {}, { signal: ac.signal, timeoutMs: 840000 });
+  assert.deepEqual(seen, [{ signal: ac.signal, timeout: 840000 }], "a call not bound whole is the caller's signal and the SDK's timeout alone");
+  await m.turn({}, () => {}, { signal: ac.signal, timeoutMs: 840000, whole: true });
+  assert.equal(seen[1].timeout, 840000);
+  assert.notEqual(seen[1].signal, ac.signal, "the call's own signal bounds the whole call");
+  assert.equal(seen[1].signal.aborted, false);
+  ac.abort();
+  assert.equal(seen[1].signal.aborted, true, "and the caller's abort still reaches it");
+});
+
+// A call reaches the model when its stream begins: the first event the provider sends, once
+// however many follow. A stream that fails before any event never began, and calls nothing.
+const streaming = (events, fault = null) => ({ messages: { stream: () => {
+  const listeners = {};
+  return {
+    on(event, listener) { (listeners[event] ??= []).push(listener); },
+    finalMessage: async () => {
+      for (const e of events) for (const l of listeners.streamEvent ?? []) l(e, {});
+      if (fault) throw fault;
+      return { content: [], stop_reason: "end_turn", usage: {} };
+    },
+  };
+} } });
+
+test("turnCallsOnStartOnce", async () => {
+  let starts = 0;
+  const onStart = () => { starts++; };
+  await overForTest(async () => streaming([{ type: "message_start" }, { type: "content_block_start" }, { type: "message_stop" }])).turn({}, () => {}, { onStart });
+  assert.equal(starts, 1, "the first event begins the call, and the rest do not again");
+  starts = 0;
+  const busy = Object.assign(new Error("slow"), { status: 429 });
+  await assert.rejects(overForTest(async () => streaming([], busy)).turn({}, () => {}, { onStart }), (e) => e.code === "busy");
+  assert.equal(starts, 0, "a call refused before its first event never began");
+  await assert.rejects(overForTest(async () => streaming([{ type: "message_start" }], new Error("cut"))).turn({}, () => {}, { onStart }), /cut/);
+  assert.equal(starts, 1, "a call cut after its first event began");
+  await overForTest(async () => streaming([{ type: "message_start" }])).turn({}, () => {});
+});
+
+// The same over the SDK itself: a 429 is no stream, and an answer's first server-sent event is.
+test("turnCallsOnStartOnce over the SDK's own stream", async () => {
+  const sse = [
+    ["message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } }],
+    ["content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }],
+    ["content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } }],
+    ["content_block_stop", { type: "content_block_stop", index: 0 }],
+    ["message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } }],
+    ["message_stop", { type: "message_stop" }],
+  ].map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join("");
+  const { fetch: refusing } = fakeFetch();
+  let starts = 0;
+  const onStart = () => { starts++; };
+  const turn = (fetch) => anthropicModel({ federation, identityToken: googleIdentityToken, fetch }).turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { onStart });
+  await assert.rejects(turn(refusing), (e) => e.code === "busy");
+  assert.equal(starts, 0, "the API refused the call before it began");
+  const answering = async (url, init) => (String(url).endsWith("/v1/messages") ? new Response(sse, { headers: { "content-type": "text/event-stream" } }) : refusing(url, init));
+  assert.equal((await turn(answering)).content[0].text, "hi");
+  assert.equal(starts, 1);
+});
+
+// The SDK's own `timeout` arms only until the response's headers arrive, so a stream that
+// begins and then outlasts the call's time would run on. The turn bounds the whole call: one
+// that runs past its time is cut there, and is busy, with no word of the SDK's abort.
+test("turnBoundsTheWholeStream", async () => {
+  const ev = (e, d) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`;
+  const head = ev("message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } });
+  const { fetch: refusing } = fakeFetch();
+  // A body that sends its first event and then nothing until the request's signal ends it, as
+  // a real fetch's body does on abort. A real body also holds the event loop open through its
+  // socket, and the turn's own time is an AbortSignal.timeout, whose timer holds nothing, so
+  // this body holds the loop with a timer of its own until the abort ends it. Without it, Node
+  // 22's test runner finds the loop empty after the first event and cancels the test; Node 26's
+  // runner keeps the loop open for a pending test, which hid it. The hold lapses by itself after
+  // two seconds, far past the turn's time, so a body that is never cut leaves no timer behind.
+  const slow = async (url, init = {}) => {
+    if (!String(url).endsWith("/v1/messages")) return refusing(url, init);
+    const body = new ReadableStream({ start(c) {
+      c.enqueue(new TextEncoder().encode(head));
+      const held = setTimeout(() => {}, 2000);
+      init.signal?.addEventListener("abort", () => { clearTimeout(held); c.error(init.signal.reason); }, { once: true });
+    } });
+    return new Response(body, { headers: { "content-type": "text/event-stream" } });
+  };
+  let starts = 0;
+  const m = anthropicModel({ federation, identityToken: googleIdentityToken, fetch: slow });
+  const t0 = Date.now();
+  await assert.rejects(m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { timeoutMs: 200, whole: true, onStart: () => { starts++; } }), (e) => e.code === "busy" && e.retryAt !== undefined);
+  const took = Date.now() - t0;
+  assert.ok(took >= 150 && took < 1000, `cut at about its time, not after: ${took} ms`);
+  assert.equal(starts, 1, "the call had begun");
+  // The reader's own leaving is still what it was, never busy.
+  const ac = new AbortController();
+  setTimeout(() => ac.abort(), 50);
+  await assert.rejects(m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { signal: ac.signal, timeoutMs: 5000, whole: true }), (e) => e.code === undefined);
+});
+
+// A visitor's ordinary call is as it was at v0.37.0: its time arms only until the headers, so
+// a stream that has begun runs on past it and finishes.
+test("visitorCallStreamsPastItsTimeout", async () => {
+  const ev = (e, d) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`;
+  const head = ev("message_start", { type: "message_start", message: { id: "m", type: "message", role: "assistant", model: "claude-sonnet-5", content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 0 } } })
+    + ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
+  const tail = ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "late" } })
+    + ev("content_block_stop", { type: "content_block_stop", index: 0 })
+    + ev("message_delta", { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 1 } })
+    + ev("message_stop", { type: "message_stop" });
+  const { fetch: refusing } = fakeFetch();
+  const slow = async (url, init = {}) => {
+    if (!String(url).endsWith("/v1/messages")) return refusing(url, init);
+    const body = new ReadableStream({ async start(c) {
+      const te = new TextEncoder();
+      c.enqueue(te.encode(head));
+      await new Promise((r) => setTimeout(r, 400));
+      c.enqueue(te.encode(tail));
+      c.close();
+    } });
+    return new Response(body, { headers: { "content-type": "text/event-stream" } });
+  };
+  const m = anthropicModel({ federation, identityToken: googleIdentityToken, fetch: slow });
+  const msg = await m.turn(params({ system: "S", tools, messages: [{ role: "user", content: "q" }] }), () => {}, { timeoutMs: 200 });
+  assert.equal(msg.content[0].text, "late", "the stream outlasted its 200 ms and still finished");
 });
 
 test("the newest block carries the mark, whatever its shape, and the caller's messages are left alone", () => {
@@ -74,13 +216,13 @@ test("the weights are the model's price ratios", () => {
 
 test("a Vertex model is built from a project and a region and exposes turn", () => {
   const m = vertexModel({ project: "p", region: "eu" });
-  assert.equal(m.name, MODEL);
+  assert.equal(m.name, DEFAULT_MODEL);
   assert.equal(typeof m.turn, "function");
 });
 
 test("an Anthropic model is built from a key and exposes turn, and the chooser reads the config", () => {
   const a = anthropicModel({ apiKey: "sk-ant-test" });
-  assert.equal(a.name, MODEL);
+  assert.equal(a.name, DEFAULT_MODEL);
   assert.equal(typeof a.turn, "function");
   const base = { project: "p", region: "eu", anthropicKey: null };
   assert.equal(modelFor(base).provider, "vertex");

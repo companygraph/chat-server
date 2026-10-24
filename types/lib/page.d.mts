@@ -5,6 +5,7 @@ export type PageInput = {
         origins: string[];
         monthTokens: number;
         provider?: string;
+        signIn?: object | null;
     };
     host: {
         title?: string;
