@@ -40,9 +40,25 @@ export const EXAMPLE_ROOT = fs.readFileSync(path.join(fixtures, "example", "mode
 const questionFiles = fs.readdirSync(path.join(fixtures, "example", "model", "questions")).filter((f) => f.endsWith(".md")).sort();
 export const QUESTION_TITLES = questionFiles.map((f) => fs.readFileSync(path.join(fixtures, "example", "model", "questions", f), "utf8").match(/^# (.+)$/m)[1]);
 
-export async function startFixtureHost() {
+// `front`, where given, stands in for the front end a host sits behind: handed the number of
+// requests answered so far, it names a status to answer in the host's place, with the HTML page a
+// front end serves while its backend restarts, or `"hang"` for a request accepted and never
+// answered, or nothing for the host to answer as it would; `requests()` counts every request it was handed.
+export async function startFixtureHost({ front } = {}) {
   const server = createHttpServer(exampleSnapshot());
+  let requests = 0;
+  if (front) {
+    const handlers = server.listeners("request");
+    server.removeAllListeners("request");
+    server.on("request", (req, res) => {
+      const answer = front(requests++);
+      if (answer === "hang") return;
+      if (answer) { res.writeHead(answer, { "content-type": "text/html" }); res.end(`<html><body>${answer} backend read error</body></html>`); return; }
+      for (const h of handlers) h.call(server, req, res);
+    });
+  }
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}/mcp`;
-  return { url, close: () => new Promise((r) => server.close(r)) };
+  // A request left hanging would hold close() open, so a front's connections are ended with it.
+  return { url, requests: () => requests, close: () => new Promise((r) => { server.close(r); if (front) server.closeAllConnections(); }) };
 }
