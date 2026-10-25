@@ -4,7 +4,7 @@ import http from "node:http";
 import { createHttpServer } from "companygraph-mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
 import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT, QUESTION_TITLES } from "./helpers.mjs";
-import { REFRESH_FAILURE_COOLDOWN_MS } from "../lib/host.mjs";
+import { REFRESH_FAILURE_COOLDOWN_MS, START_WAITS_MS } from "../lib/host.mjs";
 
 // A clock this suite moves by hand, so a cooldown measured in real seconds is proven without the
 // suite itself waiting on one.
@@ -403,7 +403,61 @@ test("a call after the host went away reconnects once, and a host that is gone i
   await second.close();
   await assert.rejects(() => h.call("list_types", {}), (e) => e.code === "host_down");
   await h.close();
-  await assert.rejects(() => connectHost("http://127.0.0.1:1/mcp"), (e) => e.code === "host_down");
+  await assert.rejects(() => connectHost("http://127.0.0.1:1/mcp", { sleep: async () => {}, warn: () => {} }), (e) => e.code === "host_down");
+});
+
+// The first connection is made while a host deployed beside this service may still be coming up
+// behind its front end, so it is tried again on a failure that passes and not on one that says
+// the address is wrong. The waits are recorded rather than slept, and the warnings collected.
+function startWatch() {
+  const waits = [], warnings = [];
+  return { waits, warnings, sleep: async (ms) => { waits.push(ms); }, warn: (fields) => { warnings.push(fields); } };
+}
+
+test("a host that answers 503 twice at start is tried again and connected, with a warning for each failed attempt", async () => {
+  const front = await startFixtureHost({ front: (n) => (n < 2 ? 503 : null) });
+  const watch = startWatch();
+  const h = await connectHost(front.url, { sleep: watch.sleep, warn: watch.warn });
+  try {
+    assert.ok(h.tools.some((t) => t.name === "list_types"), "the third attempt connected");
+    assert.deepEqual(watch.waits, START_WAITS_MS.slice(0, 2));
+    assert.deepEqual(watch.warnings.map((w) => w.attempt), [1, 2]);
+    for (const w of watch.warnings) {
+      assert.equal(w.attempts, START_WAITS_MS.length + 1);
+      assert.match(w.reason, /HTTP 503/);
+      assert.ok(!w.reason.includes("<html>"), "the reason is the status, not the front end's page");
+    }
+  } finally {
+    await h.close();
+    await front.close();
+  }
+});
+
+test("a host that answers 404 at start is not tried again: the address is wrong, and waiting will not change it", async () => {
+  const front = await startFixtureHost({ front: () => 404 });
+  const watch = startWatch();
+  try {
+    await assert.rejects(() => connectHost(front.url, { sleep: watch.sleep, warn: watch.warn }), (e) => e.code === "host_down" && e.message.startsWith(`the MCP host at ${front.url} did not answer: `));
+    assert.equal(front.requests(), 1);
+    assert.deepEqual(watch.waits, []);
+    assert.equal(watch.warnings.length, 1);
+    assert.match(watch.warnings[0].reason, /HTTP 404/);
+  } finally {
+    await front.close();
+  }
+});
+
+test("a host that never answers at start is given up on after every attempt, with the operator's error", async () => {
+  const front = await startFixtureHost({ front: () => "hang" });
+  const watch = startWatch();
+  try {
+    await assert.rejects(() => connectHost(front.url, { sleep: watch.sleep, warn: watch.warn, attemptMs: 20 }), (e) => e.code === "host_down" && e.message.startsWith(`the MCP host at ${front.url} did not answer: `));
+    assert.equal(front.requests(), START_WAITS_MS.length + 1);
+    assert.deepEqual(watch.waits, START_WAITS_MS);
+    assert.deepEqual(watch.warnings.map((w) => w.attempt), START_WAITS_MS.map((_, i) => i + 1).concat(START_WAITS_MS.length + 1));
+  } finally {
+    await front.close();
+  }
 });
 
 // A degraded host's list_types is a real reconnect underneath — close, a full open(): handshake,
