@@ -73,3 +73,9 @@ test("What it reads carries the short commit, in a paragraph that does not wrap;
   const noteSection = out.slice(out.indexOf('<div class="note">'), out.indexOf("<h2>The endpoint</h2>"));
   assert.ok(noteSection.includes(commit), "the note carries the full commit, where it wraps");
 });
+
+test("pageNamesThePick", () => {
+  const signed = renderPage({ config: { ...config, signIn: { issuer: "https://id.site.test" } }, host, origin: "https://chat.site.test" });
+  assert.match(signed, /through Claude Sonnet 5, or the model a signed-in reader picks, on the Anthropic API, and adds nothing the tools did not say\./);
+  assert.match(html, /through Claude Sonnet 5 on the Anthropic API, and adds nothing the tools did not say\./);
+});

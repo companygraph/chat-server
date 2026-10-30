@@ -108,3 +108,7 @@ jobs:
           WANT=$(jq -c .origins ../../chat/chat.json)
           GOT=$(jq -c .origins live.json)
           echo "origins: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"
+          # The sign-in the service announces is its issuer, or null when it signs no one in.
+          WANT=$(jq -r '.sign_in.issuer // "null"' ../../chat/chat.json)
+          GOT=$(jq -r '.sign_in // "null"' live.json)
+          echo "sign_in: reading $GOT, pinned $WANT"; test "$GOT" = "$WANT"

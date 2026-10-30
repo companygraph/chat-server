@@ -5,6 +5,14 @@ export type Federation = {
     serviceAccountId: string;
     workspaceId: string | null;
 };
+export type SignIn = {
+    issuer: string;
+    projectId: string;
+    orgId: string;
+    userMonthTokens: number;
+    readerSecret: string;
+    rolePrefix: string | null;
+};
 export type Config = {
     mcpUrl: string;
     origins: string[];
@@ -20,6 +28,7 @@ export type Config = {
     log: string;
     anthropicKey: string | null;
     anthropicFederation: Federation | null;
+    signIn: SignIn | null;
     verdict: boolean;
     typesafeKey: string | null;
     verdictThreshold: number | null;

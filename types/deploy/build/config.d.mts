@@ -28,6 +28,11 @@ export declare function platformOf(d: DeploymentFile): Platform;
 export declare function federationProblems(c: DeploymentFile, platform?: Platform): string[];
 /**
  * @param {DeploymentFile} c
+ * @returns {string[]}
+ */
+export declare function signInProblems(c: DeploymentFile): string[];
+/**
+ * @param {DeploymentFile} c
  * @param {Platform} platform
  * @returns {string[]}
  */

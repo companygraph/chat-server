@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // The process: the environment read once, the host connected, the model and the meter built,
-// the server listening. PORT is what the platform sets. An operator error — an unknown flag, a
-// variable not set, a host that does not answer — is one line on stderr and exit 2, never a
-// stack. `--model fake` answers every message with one sentence and calls no tool, for a local
+// the server listening. PORT is what the platform sets. The host is connected before the server
+// listens, so a start-up probe that finds the port open finds a chat with a host behind it; a
+// host still coming up is tried again first, a warning each attempt (lib/host.mjs). An operator
+// error — an unknown flag, a variable not set, a host that did not answer any attempt — is one
+// line on stderr and exit 2, never a stack. `--model fake` answers every message with one sentence and calls no tool, for a local
 // run without a model; the meter, the identity and the log line are CHAT_METER's, CHAT_IDENTITY's
 // and CHAT_LOG's, and CHAT_METER=memory is the local case.
 import fs from "node:fs";
@@ -11,9 +13,10 @@ import { parseArgs } from "node:util";
 import { configFromEnv } from "../lib/config.mjs";
 import { connectHost } from "../lib/host.mjs";
 import { modelFor } from "../lib/model.mjs";
-import { Meter } from "../lib/meter.mjs";
+import { Meter, ReaderMeter } from "../lib/meter.mjs";
 import { Bucket } from "../lib/bucket.mjs";
-import { meterStore, identityTokenSource } from "../lib/platform.mjs";
+import { meterStore, readerStore, identityTokenSource } from "../lib/platform.mjs";
+import { signInVerifier } from "../lib/signin.mjs";
 import { createHttpServer } from "../lib/http.mjs";
 import { verdictCheck } from "../lib/verdict.mjs";
 import { typesafeJudge } from "../lib/typesafe.mjs";
@@ -26,7 +29,8 @@ const fakeModel = {
   name: "fake",
   provider: "fake",
   credential: "none",
-  async turn(request, onText) {
+  async turn(request, onText, { onStart } = {}) {
+    onStart?.();
     const text = "This is a local run without a model; the host answered the handshake and nothing was asked of it.";
     onText(text);
     return /** @type {import("@anthropic-ai/sdk").default.Message} */ (/** @type {unknown} */ ({ content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 0, output_tokens: 0 } }));
@@ -63,9 +67,17 @@ try {
     ? verdictCheck({ judge: typesafeJudge({ key: /** @type {string} */ (config.typesafeKey) }), titles: () => host.titles(), promptTitles: async () => (await host.questions()).titles, threshold: config.verdictThreshold, warn })
     : null;
   if (verdict) host.refreshTitles().catch(() => {});
-  createHttpServer({ config, host, model, meter, bucket, verdict }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", /** @this {import("node:http").Server} */ function () {
+  // Sign-in, where the deployment names an issuer: one verifier for the process, since jose keeps
+  // the issuer's keys inside it, and a reader's meter built per message over the reader's own
+  // document. A token that failed is one warning line with jose's reason, never the token.
+  /** @param {{ reason: string }} fields */
+  const warnSignIn = (fields) => console.log(line("chat.signin", "WARNING", { kind: "signin", ...fields }));
+  const signIn = config.signIn ? signInVerifier(config.signIn, { warn: warnSignIn }) : null;
+  const signInConfig = config.signIn;
+  const readers = signInConfig ? async (/** @type {string} */ key) => new ReaderMeter(await readerStore(config.meter, key), { monthTokens: signInConfig.userMonthTokens }) : null;
+  createHttpServer({ config, host, model, meter, bucket, verdict, signIn, readers }, { pageCss, pageBrand, pageIcon }).listen(config.port, "0.0.0.0", /** @this {import("node:http").Server} */ function () {
     const port = (/** @type {import("node:net").AddressInfo} */ (this.address())).port, commit = host.provenance?.commit ?? null;
-    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict }));
+    console.log(line("chat.start", "INFO", { kind: "start", message: `companygraph-chat-http on :${port}, host ${config.mcpUrl} at ${commit ?? "(none)"}, model ${model.name} via ${model.provider} (${model.credential}), meter ${config.meter}, origins ${config.origins.join(" ")}, hosts ${config.hosts ? config.hosts.join(" ") : "any"}, answer check ${config.verdict ? "on" : "off"}, sign-in ${config.signIn ? config.signIn.issuer : "off"}`, port, host: config.mcpUrl, commit, model: model.name, provider: model.provider, credential: model.credential, meter: config.meter, origins: config.origins, hosts: config.hosts ?? null, verdict: config.verdict, sign_in: config.signIn?.issuer ?? null }));
   });
 } catch (err) {
   console.error((/** @type {Error} */ (err)).message);

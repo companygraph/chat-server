@@ -89,3 +89,37 @@ test("the inference region is global or us, on either platform, and only for the
   assert.deepEqual(chatProblems({ ...azure, inference_geo: "us" }, "azure"), []);
   assert.deepEqual(chatProblems({ ...azure, inference_geo: "US" }, "azure"), ["inference_geo is global or us"]);
 });
+
+// A signed-in reader: the identity service the deployment trusts, and the month a reader gets.
+const signIn = { issuer: "https://id.example.test", project_id: "281234567890", org_id: "281234567891", client_id: "281234567892@chat" };
+const signedIn = { ...googleChat, sign_in: signIn, user_month_tokens: 2000000 };
+
+test("noSignInNoProblem: a chat without sign_in, or with sound sign_in, has no problem", () => {
+  assert.deepEqual(chatProblems(googleChat, "google"), []);
+  assert.deepEqual(chatProblems(signedIn, "google"), []);
+  assert.deepEqual(chatProblems({ ...signedIn, sign_in: { ...signIn, role_prefix: "chat-" } }, "google"), []);
+});
+
+test("signInChecked: each wrong sign_in field is named, unknown keys refused", () => {
+  const with_ = (s) => chatProblems({ ...signedIn, sign_in: s }, "google");
+  assert.deepEqual(with_({ ...signIn, issuer: "http://id.example.test" }), ["sign_in.issuer is an https:// address"]);
+  assert.deepEqual(with_({ ...signIn, issuer: "https://id.example.test/" }), ["sign_in.issuer has no trailing slash"]);
+  assert.deepEqual(with_({ ...signIn, project_id: undefined }), ["sign_in.project_id is a ZITADEL id, digits"]);
+  assert.deepEqual(with_({ ...signIn, org_id: 281234567891 }), ["sign_in.org_id is a ZITADEL id, digits"]);
+  assert.deepEqual(with_({ ...signIn, client_id: "" }), ["sign_in.client_id is the widget's client id"]);
+  assert.deepEqual(with_({ ...signIn, role_prefix: "" }), ["sign_in.role_prefix is a non-empty string"]);
+  assert.deepEqual(with_({ ...signIn, orgId: "1" }), ["orgId is not a field of sign_in"]);
+  assert.deepEqual(with_("https://id.example.test"), ["sign_in is an object"]);
+  assert.deepEqual(with_(null), ["sign_in is an object"]);
+});
+
+test("signInNeedsUserMonth: user_month_tokens is a positive whole number, with sign_in only", () => {
+  assert.deepEqual(chatProblems({ ...googleChat, sign_in: signIn }, "google"), ["sign_in needs user_month_tokens, the tokens a signed-in reader gets a month"]);
+  assert.deepEqual(chatProblems({ ...googleChat, user_month_tokens: 100 }, "google"), ["user_month_tokens needs sign_in"]);
+  for (const bad of [0, -5, 1.5, "100"]) assert.deepEqual(chatProblems({ ...signedIn, user_month_tokens: bad }, "google"), ["user_month_tokens is a positive whole number"]);
+});
+
+test("signInNotOnAzure: sign_in is for a chat on Google", () => {
+  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn, user_month_tokens: 100 }, "azure"), ["sign_in is for a chat on Google", "user_month_tokens is for a chat on Google"]);
+  assert.deepEqual(chatProblems({ ...azureChat, user_month_tokens: 100 }, "azure"), ["user_month_tokens is for a chat on Google"]);
+});
