@@ -51,12 +51,24 @@ export type Host = {
 /** @param {unknown} err */
 export declare const staleTools: (err: unknown) => boolean;
 export declare const REFRESH_FAILURE_COOLDOWN_MS = 30000;
+export declare const START_WAITS_MS: number[];
+export declare const START_ATTEMPT_MS = 10000;
+export type StartWarning = {
+    message: string;
+    attempt: number;
+    attempts: number;
+    reason: string;
+    retry_in_ms: number | null;
+};
 /**
  * @param {string} url
- * @param {{ questionCap?: number; now?: () => number }} [options]
+ * @param {{ questionCap?: number; now?: () => number; sleep?: (ms: number) => Promise<void>; warn?: (fields: StartWarning) => void; attemptMs?: number }} [options]
  * @returns {Promise<Host>}
  */
-export declare function connectHost(url: string, { questionCap, now }?: {
+export declare function connectHost(url: string, { questionCap, now, sleep, warn, attemptMs }?: {
     questionCap?: number;
     now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    warn?: (fields: StartWarning) => void;
+    attemptMs?: number;
 }): Promise<Host>;

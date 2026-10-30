@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { units, Meter, MemoryStore, ESTIMATE } from "../lib/meter.mjs";
+import { units, Meter, ReaderMeter, MemoryStore, ESTIMATE, estimateFor } from "../lib/meter.mjs";
+import { DEFAULT_CHOICE } from "../lib/models.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 
 test("usage is weighed in input-equivalent tokens and rounded up", () => {
@@ -154,4 +155,59 @@ test("the Firestore store runs the function inside a transaction on one document
   const next = await store.transact((d) => ({ ...d, dayTokens: d.dayTokens + 1 }));
   assert.deepEqual(next, { dayTokens: 6 });
   assert.deepEqual(writes, [[fakeRef, { dayTokens: 6 }]]);
+});
+
+test("unitsAtFable weighs usage at that model's price", () => {
+  assert.equal(units({ input_tokens: 1000, output_tokens: 100 }, "claude-fable-5-1"), 7500);
+});
+
+test("unitsDefaultUnchanged keeps the default price when no model is given", () => {
+  assert.equal(units({ input_tokens: 100, output_tokens: 10 }), 150);
+  assert.equal(units({ input_tokens: 100, output_tokens: 10 }, "claude-sonnet-5"), 150);
+});
+
+test("a model that is not in the table is refused rather than priced as another", () => {
+  assert.throws(() => units({ input_tokens: 1 }, "claude-nope-1"), /claude-nope-1/);
+});
+
+test("estimateForDefaultIs30000", () => {
+  assert.equal(estimateFor(DEFAULT_CHOICE), 30000);
+  assert.equal(ESTIMATE, 30000);
+});
+
+test("estimateForFableMax", () => {
+  assert.equal(estimateFor({ model: "claude-fable-5-1", effort: "max" }), 1690000);
+});
+
+test("signedInSkipsDay reserves against the month alone", async () => {
+  const store = new MemoryStore();
+  const m = new Meter(store, { monthTokens: 1000000, now: at("2026-09-22T10:00:00Z") });
+  await m.reserve(100000);
+  const before = await m.state();
+  assert.equal(before.dayTokens, 100000, "the day's share is spent");
+  await assert.rejects(() => m.reserve(50000), (e) => e.code === "over_day");
+  await m.reserve(50000, { day: false });
+  const after = await m.state();
+  assert.equal(after.dayTokens, before.dayTokens);
+  assert.equal(after.monthTokens, before.monthTokens + 50000);
+  await m.settle(50000, 20000, { day: false });
+  const settled = await m.state();
+  assert.equal(settled.dayTokens, before.dayTokens);
+  assert.equal(settled.monthTokens, before.monthTokens + 20000);
+});
+
+test("readerMonthRefuses names the first of the next month", async () => {
+  const m = new ReaderMeter(new MemoryStore(), { monthTokens: 100, now: at("2026-12-31T23:59:59Z") });
+  await assert.rejects(() => m.reserve(101), (e) => e.code === "over_user_month" && e.status === 429 && e.retryAt === "2027-01-01T00:00:00.000Z");
+});
+
+test("a reader's month is reserved, settled and rolled by month alone", async () => {
+  let clock = at("2026-09-22T10:00:00Z");
+  const m = new ReaderMeter(new MemoryStore(), { monthTokens: 100, now: () => clock() });
+  await m.reserve(60);
+  assert.deepEqual(await m.settle(60, 40), { month: "2026-09", monthTokens: 40 });
+  await assert.rejects(() => m.reserve(61), (e) => e.code === "over_user_month");
+  clock = at("2026-10-01T00:00:00Z");
+  await m.reserve(100);
+  assert.deepEqual(await m.settle(100, 100), { month: "2026-10", monthTokens: 100 });
 });

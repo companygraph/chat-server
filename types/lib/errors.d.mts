@@ -7,6 +7,10 @@ export declare const CODES: {
     readonly over_month: 429;
     readonly host_down: 502;
     readonly closed: 503;
+    readonly not_granted: 403;
+    readonly signed_out: 401;
+    readonly over_user_month: 429;
+    readonly declined: 422;
 };
 export type RefusalKind = keyof typeof CODES;
 export type Signals = {
@@ -20,8 +24,8 @@ export type Signals = {
 /** @typedef {keyof typeof CODES} RefusalKind */
 /** @typedef {{ cited: string[]; calls: number; empty: number; rounds: number; claims?: number; unsupported?: number }} Signals */
 export declare class ChatError extends Error {
-    code: "bad_request" | "busy" | "closed" | "foreign" | "host_down" | "over_day" | "over_month" | "too_long";
-    status: 400 | 403 | 429 | 502 | 503;
+    code: "bad_request" | "busy" | "closed" | "declined" | "foreign" | "host_down" | "not_granted" | "over_day" | "over_month" | "over_user_month" | "signed_out" | "too_long";
+    status: 400 | 401 | 403 | 422 | 429 | 502 | 503;
     retryAt: string | undefined;
     /**
      * @param {RefusalKind} code
@@ -35,7 +39,7 @@ export declare class ChatError extends Error {
 /** @param {ChatError} err */
 export declare const refusal: (err: ChatError) => {
     error: {
-        code: "bad_request" | "busy" | "closed" | "foreign" | "host_down" | "over_day" | "over_month" | "too_long";
+        code: "bad_request" | "busy" | "closed" | "declined" | "foreign" | "host_down" | "not_granted" | "over_day" | "over_month" | "over_user_month" | "signed_out" | "too_long";
         message: string;
         retryAt?: string;
     };

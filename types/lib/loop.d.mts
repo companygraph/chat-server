@@ -1,6 +1,7 @@
 import type { Host, Title } from "./host.mjs";
 import type { Model } from "./model.mjs";
-import type { Meter } from "./meter.mjs";
+import type { Meter, ReaderMeter } from "./meter.mjs";
+import type { Choice } from "./models.mjs";
 import type { Signals } from "./errors.mjs";
 import type { verdictCheck } from "./verdict.mjs";
 export type Cite = {
@@ -109,23 +110,27 @@ export declare const diagramNote: (d: Diagram) => string;
  * @returns {Promise<Title[]>}
  */
 export declare function namesPastTheCap(host: Host, data: any): Promise<Title[]>;
+export declare const MESSAGE_DEADLINE_MS = 870000;
 /**
- * @param {{ host: Host; model: Model; meter: Meter; questionCap?: number; verdict?: ReturnType<typeof verdictCheck> | null; today?: () => string }} services
- * @param {{ messages: unknown; lang?: string | null | undefined; signal?: AbortSignal | undefined }} request
+ * @param {{ host: Host; model: Model; meter: Meter; questionCap?: number; verdict?: ReturnType<typeof verdictCheck> | null; today?: () => string; now?: () => number }} services
+ * @param {{ messages: unknown; lang?: string | null | undefined; signal?: AbortSignal | undefined; choice?: Choice; reader?: ReaderMeter | null }} request
  * @param {(event: string, data: unknown) => void} emit
  * @returns {Promise<Signals & { spent: number }>}
  */
-export declare function answer({ host, model, meter, questionCap, verdict, today }: {
+export declare function answer({ host, model, meter, questionCap, verdict, today, now }: {
     host: Host;
     model: Model;
     meter: Meter;
     questionCap?: number;
     verdict?: ReturnType<typeof verdictCheck> | null;
     today?: () => string;
-}, { messages, lang, signal }: {
+    now?: () => number;
+}, { messages, lang, signal, choice, reader }: {
     messages: unknown;
     lang?: string | null | undefined;
     signal?: AbortSignal | undefined;
+    choice?: Choice;
+    reader?: ReaderMeter | null;
 }, emit: (event: string, data: unknown) => void): Promise<Signals & {
     spent: number;
 }>;

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_MESSAGE_CHARS, HISTORY_TURNS, MAX_TOOL_RESULT_CHARS, validateMessages, window, truncate } from "../lib/shape.mjs";
+import { MAX_MESSAGE_CHARS, HISTORY_TURNS, MAX_TOOL_RESULT_CHARS, validateMessages, window, truncate, chosen } from "../lib/shape.mjs";
+import { DEFAULT_CHOICE } from "../lib/models.mjs";
 
 const turn = (role, content) => ({ role, content });
 
@@ -41,4 +42,56 @@ test("a tool answer over the cap is cut with a line that says so", () => {
   assert.ok(cut.startsWith("a".repeat(MAX_TOOL_RESULT_CHARS)));
   assert.match(cut, new RegExp(`truncated at ${MAX_TOOL_RESULT_CHARS} characters`));
   assert.equal(truncate("short"), "short");
+});
+
+// What a request may choose: the default for a visitor whatever they name, and for a signed-in
+// reader any effort on a model their roles open. A name the table does not hold is a malformed
+// request, whoever sends it; a name it holds and the sender may not have is not granted.
+const reader = (...models) => ({ sub: "reader-1", models: new Set(["claude-sonnet-5", ...models]) });
+const code = (c) => (e) => e.code === c;
+
+test("chosenDefault", () => {
+  assert.deepEqual(chosen({}, null), DEFAULT_CHOICE);
+  assert.deepEqual(chosen({}, reader()), DEFAULT_CHOICE);
+  assert.deepEqual(chosen({ effort: "high" }, reader("claude-opus-5-5")), { model: "claude-sonnet-5", effort: "high" }, "an absent field is its default");
+});
+
+test("chosenUnknownModelBadRequest", () => {
+  assert.throws(() => chosen({ model: "claude-unknown" }, reader()), code("bad_request"));
+  assert.throws(() => chosen({ model: "claude-unknown" }, null), code("bad_request"));
+  assert.throws(() => chosen({ effort: "extreme" }, reader()), code("bad_request"));
+  assert.throws(() => chosen({ model: 5 }, reader()), code("bad_request"));
+  assert.throws(() => chosen({ effort: null }, null), code("bad_request"));
+  assert.throws(() => chosen({ model: "toString" }, reader()), code("bad_request"), "a name the table inherits is not one it holds");
+});
+
+test("visitorNamingDefaultIsAnswered", () => {
+  assert.deepEqual(chosen({ model: "claude-sonnet-5", effort: "low" }, null), DEFAULT_CHOICE);
+});
+
+test("visitorOtherModelNotGranted", () => {
+  assert.throws(() => chosen({ model: "claude-opus-5-5" }, null), code("not_granted"));
+});
+
+test("visitorOtherEffortNotGranted", () => {
+  assert.throws(() => chosen({ effort: "medium" }, null), code("not_granted"));
+});
+
+test("readerUngrantedModelNotGranted", () => {
+  assert.throws(() => chosen({ model: "claude-fable-5-1", effort: "low" }, reader("claude-opus-5-5")), code("not_granted"));
+});
+
+test("readerGrantedAnyEffort", () => {
+  for (const effort of ["low", "medium", "high", "xhigh", "max"]) {
+    assert.deepEqual(chosen({ model: "claude-opus-5-5", effort }, reader("claude-opus-5-5")), { model: "claude-opus-5-5", effort });
+    assert.deepEqual(chosen({ effort }, reader("claude-opus-5-5")), { model: "claude-sonnet-5", effort }, "a role opens every effort, on the default too");
+  }
+});
+
+// A reader who holds no role gets what a visitor gets: effort comes with a grant, and a sign-in
+// alone is no grant.
+test("roleLessReaderLowOnly", () => {
+  assert.deepEqual(chosen({ model: "claude-sonnet-5", effort: "low" }, reader()), DEFAULT_CHOICE);
+  assert.deepEqual(chosen({}, reader()), DEFAULT_CHOICE);
+  for (const effort of ["medium", "high", "xhigh", "max"]) assert.throws(() => chosen({ effort }, reader()), code("not_granted"));
 });

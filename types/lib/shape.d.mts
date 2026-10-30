@@ -1,3 +1,9 @@
+import type { Choice } from "./models.mjs";
+import type { Reader } from "./signin.mjs";
+/**
+ * @import { Choice, Effort } from "./models.mjs"
+ * @import { Reader } from "./signin.mjs"
+ */
 export declare const MAX_MESSAGE_CHARS = 1000;
 export declare const HISTORY_TURNS = 8;
 export declare const MAX_TOOL_RESULT_CHARS = 32000;
@@ -28,3 +34,12 @@ export declare function validateMessages(messages: unknown): Message[];
 export declare function window(messages: Message[]): Message[];
 /** @param {string} text */
 export declare function truncate(text: string): string;
+/**
+ * @param {{ model?: unknown; effort?: unknown }} body
+ * @param {Reader | null} reader
+ * @returns {Choice}
+ */
+export declare function chosen(body: {
+    model?: unknown;
+    effort?: unknown;
+}, reader: Reader | null): Choice;

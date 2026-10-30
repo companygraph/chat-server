@@ -35,6 +35,19 @@ export declare const METERS: {
  * @param {Record<string, (options?: any) => Promise<Store>>} [adapters]
  */
 export declare const meterStore: (kind: string, options?: Record<string, string>, adapters?: Record<string, (options?: any) => Promise<Store>>) => Promise<Store>;
+/**
+ * @param {() => Promise<import("@google-cloud/firestore").Firestore>} [open]
+ * @returns {(key: string) => Promise<Store>}
+ */
+export declare function firestoreReaders(open?: () => Promise<import("@google-cloud/firestore").Firestore>): (key: string) => Promise<Store>;
+/** @type {Record<string, (key: string) => Promise<Store>>} */
+export declare const READERS: Record<string, (key: string) => Promise<Store>>;
+/**
+ * @param {string} kind
+ * @param {string} key
+ * @param {Record<string, (key: string) => Promise<Store>>} [adapters]
+ */
+export declare function readerStore(kind: string, key: string, adapters?: Record<string, (key: string) => Promise<Store>>): Promise<Store>;
 export declare const IDENTITIES: {
     google: () => Promise<typeof import("./platform/google/identity.mjs").googleIdentityToken>;
     azure: () => Promise<typeof import("./platform/azure/identity.mjs").azureIdentityToken>;

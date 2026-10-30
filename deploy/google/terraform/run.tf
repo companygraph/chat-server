@@ -24,6 +24,15 @@ locals {
       ANTHROPIC_WORKSPACE_ID       = var.anthropic_federation.workspace_id
     } : k => v if v != null
   }
+  sign_in_env = var.sign_in == null ? {} : {
+    for k, v in {
+      CHAT_OIDC_ISSUER       = var.sign_in.issuer
+      CHAT_OIDC_PROJECT      = var.sign_in.project_id
+      CHAT_OIDC_ORG          = var.sign_in.org_id
+      CHAT_USER_MONTH_TOKENS = tostring(var.user_month_tokens)
+      CHAT_OIDC_ROLE_PREFIX  = var.sign_in.role_prefix
+    } : k => v if v != null
+  }
 }
 
 resource "google_cloud_run_v2_service" "chat" {
@@ -36,8 +45,9 @@ resource "google_cloud_run_v2_service" "chat" {
     service_account                  = google_service_account.chat.email
     max_instance_request_concurrency = 20
     # A message is at most five model calls of sixty seconds each, and a request cut off part way
-    # through one is a visitor left with half an answer.
-    timeout = "300s"
+    # through one is a visitor left with half an answer. A signed-in reader may choose a model
+    # whose calls run longer, so with sign_in the limit rises to fifteen minutes.
+    timeout = var.sign_in == null ? "300s" : "900s"
     scaling {
       min_instance_count = 0
       max_instance_count = 3
@@ -130,6 +140,35 @@ resource "google_cloud_run_v2_service" "chat" {
         content {
           name  = "CHAT_VERDICT_THRESHOLD"
           value = tostring(var.verdict_threshold)
+        }
+      }
+      # Sign-in: the five values the service takes together or not at all, and the optional role
+      # prefix.
+      dynamic "env" {
+        for_each = local.sign_in_env
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+      # The reader secret keys a signed-in reader's month: chat-readers/<key> is named by the
+      # HMAC-SHA256 of the token's sub under it, so the meter holds nothing the identity service
+      # would recognize, and rotating it gives every reader a fresh month. With sign_in it rides
+      # in from the project's secret, latest version. The secret is the owner's, as the Anthropic
+      # key's is: the owner makes it, adds a random first version and grants the runtime read
+      # access before the deploy, as the owner's steps say. The module neither makes it nor grants
+      # access to it, so a deploy before the owner's three commands fails at Cloud Run's own
+      # check, by name.
+      dynamic "env" {
+        for_each = var.sign_in == null ? [] : [1]
+        content {
+          name = "CHAT_READER_SECRET"
+          value_source {
+            secret_key_ref {
+              secret  = "chat-reader-secret"
+              version = "latest"
+            }
+          }
         }
       }
       dynamic "env" {

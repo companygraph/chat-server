@@ -158,3 +158,43 @@ test("the inference region is the Anthropic API's own, global or us, and unset s
   assert.throws(() => configFromEnv({ ...anthropic, CHAT_INFERENCE_GEO: "eu" }), /^Error: CHAT_INFERENCE_GEO is not one of global us: eu$/);
   assert.throws(() => configFromEnv({ ...full, CHAT_INFERENCE_GEO: "us" }), /^Error: CHAT_INFERENCE_GEO is for the Anthropic API; on Vertex the region is CHAT_REGION$/);
 });
+
+const signIn = {
+  CHAT_OIDC_ISSUER: "https://id.example.test",
+  CHAT_OIDC_PROJECT: "123456",
+  CHAT_OIDC_ORG: "654321",
+  CHAT_USER_MONTH_TOKENS: "2000000",
+  CHAT_READER_SECRET: "a-long-random-secret",
+};
+
+test("signInAbsentIsNull", () => {
+  assert.equal(configFromEnv(full).signIn, null);
+});
+
+test("signInAllFive: the five variables give the object, the allowance a number, the role prefix optional", () => {
+  assert.deepEqual(configFromEnv({ ...full, ...signIn }).signIn, {
+    issuer: "https://id.example.test", projectId: "123456", orgId: "654321",
+    userMonthTokens: 2000000, readerSecret: "a-long-random-secret", rolePrefix: null,
+  });
+  assert.equal(configFromEnv({ ...full, ...signIn, CHAT_OIDC_ROLE_PREFIX: "blust-ch-" }).signIn?.rolePrefix, "blust-ch-");
+});
+
+test("signInPartialRefused: each of the five missing is named, and a role prefix alone is refused", () => {
+  assert.throws(() => configFromEnv({ ...full, CHAT_OIDC_ISSUER: signIn.CHAT_OIDC_ISSUER }), /CHAT_OIDC_PROJECT, CHAT_OIDC_ORG, CHAT_USER_MONTH_TOKENS, CHAT_READER_SECRET are not set; sign-in needs all five/);
+  assert.throws(() => configFromEnv({ ...full, ...signIn, CHAT_READER_SECRET: "  " }), /CHAT_READER_SECRET is not set; sign-in needs all five/);
+  assert.throws(() => configFromEnv({ ...full, CHAT_OIDC_ROLE_PREFIX: "blust-ch-" }), /CHAT_OIDC_ROLE_PREFIX is set without/);
+});
+
+test("signInIssuerIsHttps", () => {
+  assert.throws(() => configFromEnv({ ...full, ...signIn, CHAT_OIDC_ISSUER: "http://id.example.test" }), /CHAT_OIDC_ISSUER must be an https URL/);
+});
+
+test("signInUserMonthTokensIsAPositiveWholeNumber", () => {
+  assert.throws(() => configFromEnv({ ...full, ...signIn, CHAT_USER_MONTH_TOKENS: "0" }), /CHAT_USER_MONTH_TOKENS must be at least 1/);
+});
+
+test("signInNeedsReaderMeter", () => {
+  const table = { CHAT_METER: "table", CHAT_TABLE_URL: "https://t.example.test", AZURE_CLIENT_ID: "c" };
+  assert.throws(() => configFromEnv({ ...full, ...signIn, ...table }), /sign-in needs CHAT_METER firestore or memory/);
+  assert.equal(configFromEnv({ ...full, ...signIn, CHAT_METER: "memory" }).signIn?.projectId, "123456");
+});

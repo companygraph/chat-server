@@ -131,3 +131,8 @@ test("where answers were checked, the report counts their claims and lists each 
   assert.doesNotMatch(md, /^\| Who\? \|/m);
   assert.doesNotMatch(renderReport([entry()], { week: "2026-W40", ...weekRange("2026-W40") }), /## Claims/, "no section where nothing was checked");
 });
+
+test("reportCountsByModel", () => {
+  const md = renderReport([entry({ model: "claude-opus-5-5" }), entry({ model: "claude-opus-5-5" }), entry({ model: "claude-sonnet-5" }), entry()], { week: "2026-W40", ...weekRange("2026-W40") });
+  assert.match(md, /^## By model\n\n\| Model \| Questions \|\n\| --- \| --- \|\n\| claude-opus-5-5 \| 2 \|\n\| claude-sonnet-5 \| 2 \|$/m);
+});
