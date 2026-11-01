@@ -65,6 +65,27 @@ test("GET /chat says what the chat is and spends nothing", async () => {
   assert.equal(typeof c.address, "string");
 });
 
+const EVERY_ANSWER = {
+  "strict-transport-security": "max-age=63072000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "strict-origin-when-cross-origin",
+  "content-security-policy": "frame-ancestors 'self'",
+};
+
+// The page, the chat and every refusal keep a browser on HTTPS, never let it guess a type and
+// are framed by nothing but the host, so no other page can lay the chat under its own.
+test("every answer carries the headers that keep a browser on HTTPS and out of foreign frames", async () => {
+  const base = await listen();
+  const answers = [
+    await fetch(`${base}/`),
+    await fetch(`${base}/health`),
+    await fetch(`${base}/chat`),
+    await post(base, "not json"),
+    await fetch(`${base}/nothing`),
+  ];
+  for (const r of answers) for (const [name, value] of Object.entries(EVERY_ANSWER)) assert.equal(r.headers.get(name), value, `${r.url} ${name}`);
+});
+
 test("GET /chat is held by the same bucket as a message", async () => {
   const base = await listen();
   const headers = { "x-forwarded-for": "203.0.113.9, 35.0.0.1" };
