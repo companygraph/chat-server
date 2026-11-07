@@ -6,10 +6,13 @@ variable "domain" { type = string }
 variable "mcp_url" { type = string }
 variable "origins" { type = list(string) }
 variable "month_tokens" { type = number }
-# Container Apps' ingress appends one address, the client's, to X-Forwarded-For.
+# Container Apps' ingress appends one address, the client's, to X-Forwarded-For, and nothing
+# after it, so the service reads the last entry: no hop to skip. At one, the service would read
+# whatever the caller wrote before that entry, and a caller who wrote a new one each time would
+# never be held by the per-address bucket.
 variable "proxy_hops" {
   type    = number
-  default = 1
+  default = 0
 }
 variable "image" {
   description = "The image to run, pushed by the same workflow run"

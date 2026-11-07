@@ -27,3 +27,12 @@ test("the address is the one before the trusted hops, or the socket's", () => {
   assert.equal(clientAddress(req("203.0.113.5"), 1), "203.0.113.5", "fewer entries than hops: the first");
   assert.equal(clientAddress(req(null), 1), "10.0.0.9");
 });
+
+// Container Apps' ingress appends the client's address and nothing after it, so a chat there
+// trusts no hop: what a caller wrote before the ingress's entry is ignored, as it is on Google.
+test("with no trusted hop the address is the last entry, the one the ingress appended", () => {
+  const req = (xff) => ({ headers: { "x-forwarded-for": xff }, socket: { remoteAddress: "10.0.0.9" } });
+  assert.equal(clientAddress(req("203.0.113.5"), 0), "203.0.113.5");
+  assert.equal(clientAddress(req("198.51.100.7, 203.0.113.5"), 0), "203.0.113.5", "a forged entry is ignored");
+  assert.equal(clientAddress(req("198.51.100.7, 198.51.100.9, 203.0.113.5"), 0), "203.0.113.5", "two forged entries are ignored");
+});

@@ -80,6 +80,10 @@ run "no_sign_in_reads_no_secret_but_keeps_the_vault" {
     error_message = "without sign_in the app has no secret and no sign-in variable."
   }
   assert {
+    condition     = one([for e in azurerm_container_app.chat.template[0].container[0].env : e.value if e.name == "CHAT_PROXY_HOPS"]) == "0"
+    error_message = "the service reads the last X-Forwarded-For entry, the one Container Apps' ingress appends."
+  }
+  assert {
     condition     = azurerm_key_vault.this.name == "chatexample" && azurerm_key_vault.this.rbac_authorization_enabled
     error_message = "the vault exists without sign_in, under the storage account's name, with access by role."
   }
