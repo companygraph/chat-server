@@ -8,7 +8,9 @@
 # and its exclusion ensure. A workspace names its transformation and the transformation names its
 # workspace, so the link is made by azapi after both exist.
 locals {
-  question  = "ContainerAppName == 'chat' and tostring(parse_json(Log).kind) == 'question'"
+  # A transformation's KQL compiles a smaller language than a query's: a dynamic value is read
+  # with brackets, and the dot form is a syntax error at the rule's creation (2026-11-07).
+  question  = "ContainerAppName == 'chat' and tostring(parse_json(Log)['kind']) == 'question'"
   transform = "Microsoft-Table-ContainerAppConsoleLogs"
 }
 

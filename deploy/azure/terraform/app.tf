@@ -30,7 +30,9 @@ resource "azurerm_storage_table" "meter" {
 }
 
 resource "azurerm_role_assignment" "meter" {
-  scope                = azurerm_storage_table.meter.resource_manager_id
+  # The table's id is its resource manager id at azurerm 5, and resource_manager_id is null there;
+  # the first apply on a subscription failed on exactly this scope (2026-11-07).
+  scope                = azurerm_storage_table.meter.id
   role_definition_name = "Storage Table Data Contributor"
   principal_id         = azurerm_user_assigned_identity.run.principal_id
 }
