@@ -30,8 +30,8 @@ const scripted = (...texts) => ({ name: "fake", async turn(req, onText) { const 
 
 const config = (over = {}) => ({ mcpUrl: host.url, origins: ["https://site.test"], hosts: null, monthTokens: 1_000_000, project: "p", region: "eu", proxyHops: 1, port: 0, meter: "memory", anthropicKey: null, provider: "vertex", ...over });
 
-async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), log = () => {}, opts = {}, signIn, readers } = {}) {
-  const server = createHttpServer({ config: cfg, host, model, meter, bucket, log, ...(signIn !== undefined ? { signIn } : {}), ...(readers !== undefined ? { readers } : {}) }, opts);
+async function listen({ model = scripted("hello"), cfg = config(), meter = new Meter(new MemoryStore(), { monthTokens: cfg.monthTokens }), bucket = new Bucket(), log = () => {}, opts = {}, signIn, readers, front } = {}) {
+  const server = createHttpServer({ config: cfg, host, model, meter, bucket, log, ...(signIn !== undefined ? { signIn } : {}), ...(readers !== undefined ? { readers } : {}), ...(front !== undefined ? { front } : {}) }, opts);
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   after(() => server.close());
   return `http://127.0.0.1:${server.address().port}`;
@@ -598,4 +598,17 @@ test("noSignInIgnoresChoiceFields", async () => {
   const unknown = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-unknown", effort: 5 });
   assert.equal(unknown.status, 200, "fields 0.37.0 never read are not judged either");
   await unknown.text();
+});
+
+// Where the deployment names its front end, the address GET reports, and the bucket keys on, skips
+// a hop only for the front end's own entry: a caller who forged one is still themselves.
+test("the address skips a hop only for the front end's own entry", async () => {
+  const base = await listen({ front: (a) => a === "74.125.212.66" });
+  const at = async (xff) => (await (await fetch(`${base}/chat`, { headers: { "x-forwarded-for": xff } })).json()).address;
+  assert.equal(await at("203.0.113.5, 74.125.212.66"), "203.0.113.5");
+  assert.equal(await at("198.51.100.7, 203.0.113.5"), "203.0.113.5");
+});
+
+test("sign-in without its secret read does not start", () => {
+  assert.throws(() => createHttpServer({ config: config({ signIn: { ...SIGN_IN, readerSecret: "" } }), host, model: scripted("x"), meter: new Meter(new MemoryStore(), { monthTokens: 1 }), bucket: new Bucket(), signIn: verifier(), readers: async () => null }), /sign-in needs the reader secret, which was not read/);
 });

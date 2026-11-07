@@ -11,6 +11,7 @@ export type SignIn = {
     orgId: string;
     userMonthTokens: number;
     readerSecret: string;
+    readerSecretUrl: string | null;
     rolePrefix: string | null;
 };
 export type Config = {
@@ -21,6 +22,7 @@ export type Config = {
     project: string | null;
     region: string | null;
     proxyHops: number;
+    front: "google" | null;
     questionIndexChars: number;
     port: number;
     meter: string;
@@ -37,6 +39,7 @@ export type Config = {
     credential: "key" | "federation" | "google";
     meterOptions: Record<string, string>;
     identityOptions: Record<string, string>;
+    vaultOptions: Record<string, string>;
 };
 /**
  * @param {Env} [env]

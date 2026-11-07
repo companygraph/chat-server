@@ -16,6 +16,7 @@ export type Services = {
     verdict?: ReturnType<typeof verdictCheck> | null;
     signIn?: ReturnType<typeof signInVerifier> | null;
     readers?: ((key: string) => Promise<ReaderMeter>) | null;
+    front?: ((address: string) => boolean | null) | null;
 };
 export type PageOptions = {
     pageCss?: string | null;
@@ -26,4 +27,4 @@ export type PageOptions = {
  * @param {Services} services
  * @param {PageOptions} [page]
  */
-export declare function createHttpServer({ config, host, model, meter, bucket, log, verdict, signIn, readers }: Services, { pageCss, pageBrand, pageIcon }?: PageOptions): http.Server<typeof http.IncomingMessage, typeof http.ServerResponse>;
+export declare function createHttpServer({ config, host, model, meter, bucket, log, verdict, signIn, readers, front }: Services, { pageCss, pageBrand, pageIcon }?: PageOptions): http.Server<typeof http.IncomingMessage, typeof http.ServerResponse>;

@@ -4,6 +4,11 @@
 # on Google: the module makes the vault and lets the service read it, and the owner adds the
 # secret by hand, as the README's owner's steps say, so its value is in no file and no state.
 #
+# The service reads it from the vault itself, as its own identity, when it starts, and the app
+# holds no Container Apps secret: Container Apps hands a secret's value, even one that only
+# references a vault, to whoever may list the app's secrets, and the pull-request plan identity
+# may. The vault is read by role, and that identity holds none there.
+#
 # The vault exists with or without sign_in, so a deployment applies it once before it names
 # sign_in, and the owner has a vault to put the secret into before the app asks for it. It takes
 # the storage account's name, which the deployment already chose to be free across Azure.
@@ -28,7 +33,9 @@ resource "azurerm_role_assignment" "reader_secret" {
 
 locals {
   reader_secret_name = "chat-reader-secret"
-  sign_in_env = var.sign_in == null ? {} : {
+  # The vault's address is known only once it exists, so it is merged after the filter, which
+  # would otherwise leave every key of the map unknown at plan.
+  sign_in_env = var.sign_in == null ? {} : merge({
     for k, v in {
       CHAT_OIDC_ISSUER       = var.sign_in.issuer
       CHAT_OIDC_PROJECT      = var.sign_in.project_id
@@ -36,5 +43,7 @@ locals {
       CHAT_USER_MONTH_TOKENS = tostring(var.user_month_tokens)
       CHAT_OIDC_ROLE_PREFIX  = var.sign_in.role_prefix
     } : k => v if v != null
-  }
+    }, {
+    CHAT_READER_SECRET_URL = "${azurerm_key_vault.this.vault_uri}secrets/${local.reader_secret_name}"
+  })
 }

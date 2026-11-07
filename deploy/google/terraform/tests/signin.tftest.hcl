@@ -60,3 +60,12 @@ run "user_month_must_be_positive_whole" {
     user_month_tokens = 1.5
   }
 }
+
+run "the_front_is_google" {
+  command         = plan
+  expect_failures = [check.run_host]
+  assert {
+    condition     = [for e in google_cloud_run_v2_service.chat.template[0].containers[0].env : e.value if e.name == "CHAT_FRONT"] == ["google"]
+    error_message = "the service skips a hop only for Google's own addresses."
+  }
+}

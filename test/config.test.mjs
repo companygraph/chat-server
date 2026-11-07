@@ -174,7 +174,7 @@ test("signInAbsentIsNull", () => {
 test("signInAllFive: the five variables give the object, the allowance a number, the role prefix optional", () => {
   assert.deepEqual(configFromEnv({ ...full, ...signIn }).signIn, {
     issuer: "https://id.example.test", projectId: "123456", orgId: "654321",
-    userMonthTokens: 2000000, readerSecret: "a-long-random-secret", rolePrefix: null,
+    userMonthTokens: 2000000, readerSecret: "a-long-random-secret", readerSecretUrl: null, rolePrefix: null,
   });
   assert.equal(configFromEnv({ ...full, ...signIn, CHAT_OIDC_ROLE_PREFIX: "blust-ch-" }).signIn?.rolePrefix, "blust-ch-");
 });
@@ -199,4 +199,31 @@ test("signInOnEveryReaderMeter: sign-in runs on the table meter as on Firestore 
   assert.equal(c.signIn?.projectId, "123456");
   assert.deepEqual(c.meterOptions, { tableUrl: "https://t.example.test", clientId: "c" });
   assert.equal(configFromEnv({ ...full, ...signIn, CHAT_METER: "memory" }).signIn?.projectId, "123456");
+});
+
+// On Azure the reader secret is in a key vault, which the service reads with its own identity, so
+// the environment names the secret's URL in its place and never both.
+const vaultAzure = { CHAT_IDENTITY: "azure", IDENTITY_ENDPOINT: "http://localhost:42356/msi/token", IDENTITY_HEADER: "h", AZURE_CLIENT_ID: "c" };
+const { CHAT_READER_SECRET: _secret, ...signInWithoutSecret } = signIn;
+const SECRET_URL = "https://chatexample.vault.azure.net/secrets/chat-reader-secret";
+
+test("signInSecretFromVault: the URL stands for the secret, which the start reads", () => {
+  const c = configFromEnv({ ...full, ...signInWithoutSecret, ...vaultAzure, CHAT_READER_SECRET_URL: SECRET_URL });
+  assert.equal(c.signIn?.readerSecretUrl, SECRET_URL);
+  assert.equal(c.signIn?.readerSecret, "", "nothing until the vault is read");
+  assert.deepEqual(c.vaultOptions, { identityEndpoint: "http://localhost:42356/msi/token", identityHeader: "h", clientId: "c" });
+  assert.deepEqual(configFromEnv({ ...full, ...signIn }).vaultOptions, {});
+});
+
+test("signInSecretFromVaultRefusals: both, a plain address and an identity that cannot read a vault", () => {
+  assert.throws(() => configFromEnv({ ...full, ...signIn, ...vaultAzure, CHAT_READER_SECRET_URL: SECRET_URL }), /CHAT_READER_SECRET and CHAT_READER_SECRET_URL are both set; set one/);
+  assert.throws(() => configFromEnv({ ...full, ...signInWithoutSecret, ...vaultAzure, CHAT_READER_SECRET_URL: "http://chatexample.vault.azure.net/secrets/x" }), /CHAT_READER_SECRET_URL must be an https URL/);
+  assert.throws(() => configFromEnv({ ...full, ...signInWithoutSecret, CHAT_READER_SECRET_URL: SECRET_URL }), /CHAT_READER_SECRET_URL needs CHAT_IDENTITY=azure/);
+  assert.throws(() => configFromEnv({ ...full, ...signInWithoutSecret, CHAT_IDENTITY: "azure", CHAT_READER_SECRET_URL: SECRET_URL }), /CHAT_READER_SECRET_URL needs IDENTITY_ENDPOINT, IDENTITY_HEADER, AZURE_CLIENT_ID/);
+});
+
+test("frontIsGoogleOrUnset", () => {
+  assert.equal(configFromEnv(full).front, null);
+  assert.equal(configFromEnv({ ...full, CHAT_FRONT: "google" }).front, "google");
+  assert.throws(() => configFromEnv({ ...full, CHAT_FRONT: "azure" }), /CHAT_FRONT is not one of google: azure/);
 });
