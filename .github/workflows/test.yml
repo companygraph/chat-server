@@ -34,4 +34,5 @@ jobs:
       - run: terraform -chdir=deploy/google/terraform test
       - run: terraform -chdir=deploy/azure/terraform init -backend=false -input=false
       - run: terraform -chdir=deploy/azure/terraform validate
+      - run: terraform -chdir=deploy/azure/terraform test
       - run: terraform fmt -check -recursive deploy

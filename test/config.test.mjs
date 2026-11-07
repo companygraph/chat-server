@@ -193,8 +193,10 @@ test("signInUserMonthTokensIsAPositiveWholeNumber", () => {
   assert.throws(() => configFromEnv({ ...full, ...signIn, CHAT_USER_MONTH_TOKENS: "0" }), /CHAT_USER_MONTH_TOKENS must be at least 1/);
 });
 
-test("signInNeedsReaderMeter", () => {
+test("signInOnEveryReaderMeter: sign-in runs on the table meter as on Firestore and memory", () => {
   const table = { CHAT_METER: "table", CHAT_TABLE_URL: "https://t.example.test", AZURE_CLIENT_ID: "c" };
-  assert.throws(() => configFromEnv({ ...full, ...signIn, ...table }), /sign-in needs CHAT_METER firestore or memory/);
+  const c = configFromEnv({ ...full, ...signIn, ...table });
+  assert.equal(c.signIn?.projectId, "123456");
+  assert.deepEqual(c.meterOptions, { tableUrl: "https://t.example.test", clientId: "c" });
   assert.equal(configFromEnv({ ...full, ...signIn, CHAT_METER: "memory" }).signIn?.projectId, "123456");
 });

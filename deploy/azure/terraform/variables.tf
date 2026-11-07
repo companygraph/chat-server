@@ -6,10 +6,13 @@ variable "domain" { type = string }
 variable "mcp_url" { type = string }
 variable "origins" { type = list(string) }
 variable "month_tokens" { type = number }
-# Container Apps' ingress appends one address, the client's, to X-Forwarded-For.
+# Container Apps' ingress appends one address, the client's, to X-Forwarded-For, and nothing
+# after it, so the service reads the last entry: no hop to skip. At one, the service would read
+# whatever the caller wrote before that entry, and a caller who wrote a new one each time would
+# never be held by the per-address bucket.
 variable "proxy_hops" {
   type    = number
-  default = 1
+  default = 0
 }
 variable "image" {
   description = "The image to run, pushed by the same workflow run"
@@ -56,3 +59,30 @@ variable "inference_geo" {
 variable "repository" { type = string }
 variable "repository_id" { type = string }
 variable "owner_id" { type = string }
+
+# Readers who sign in at ZITADEL and choose the model, as on Google: the service checks a token's
+# issuer, the project it was issued for and the organization the reader belongs to; role_prefix
+# narrows which roles count. chat.json's sign_in also holds the widget's client_id, which this
+# object does not name and so drops. The reader secret is the owner's, in the key vault (signin.tf).
+variable "sign_in" {
+  type = object({
+    issuer      = string
+    project_id  = string
+    org_id      = string
+    role_prefix = optional(string)
+  })
+  default = null
+}
+# What a signed-in reader may spend a month, beside month_tokens, which is the deployment's.
+variable "user_month_tokens" {
+  type    = number
+  default = null
+  validation {
+    condition     = var.sign_in == null || var.user_month_tokens != null
+    error_message = "user_month_tokens is required with sign_in."
+  }
+  validation {
+    condition     = var.user_month_tokens == null ? true : var.user_month_tokens > 0 && var.user_month_tokens == floor(var.user_month_tokens)
+    error_message = "user_month_tokens is a positive whole number."
+  }
+}

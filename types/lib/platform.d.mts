@@ -40,14 +40,22 @@ export declare const meterStore: (kind: string, options?: Record<string, string>
  * @returns {(key: string) => Promise<Store>}
  */
 export declare function firestoreReaders(open?: () => Promise<import("@google-cloud/firestore").Firestore>): (key: string) => Promise<Store>;
-/** @type {Record<string, (key: string) => Promise<Store>>} */
-export declare const READERS: Record<string, (key: string) => Promise<Store>>;
+/**
+ * The table's address and the identity come from the meter's own options, CHAT_TABLE_URL and
+ * AZURE_CLIENT_ID, which the first reader's message hands on.
+ * @param {(options: Record<string, string>) => Promise<import("@azure/data-tables").TableClient>} [open]
+ * @returns {(key: string, options?: Record<string, string>) => Promise<Store>}
+ */
+export declare function tableReaders(open?: (options: Record<string, string>) => Promise<import("@azure/data-tables").TableClient>): (key: string, options?: Record<string, string>) => Promise<Store>;
+/** @type {Record<string, (key: string, options?: Record<string, string>) => Promise<Store>>} */
+export declare const READERS: Record<string, (key: string, options?: Record<string, string>) => Promise<Store>>;
 /**
  * @param {string} kind
  * @param {string} key
- * @param {Record<string, (key: string) => Promise<Store>>} [adapters]
+ * @param {Record<string, (key: string, options?: Record<string, string>) => Promise<Store>>} [adapters]
+ * @param {Record<string, string>} [options] the meter's options, which the table store reads its address from
  */
-export declare function readerStore(kind: string, key: string, adapters?: Record<string, (key: string) => Promise<Store>>): Promise<Store>;
+export declare function readerStore(kind: string, key: string, adapters?: Record<string, (key: string, options?: Record<string, string>) => Promise<Store>>, options?: Record<string, string>): Promise<Store>;
 export declare const IDENTITIES: {
     google: () => Promise<typeof import("./platform/google/identity.mjs").googleIdentityToken>;
     azure: () => Promise<typeof import("./platform/azure/identity.mjs").azureIdentityToken>;

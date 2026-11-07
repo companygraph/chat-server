@@ -119,7 +119,9 @@ test("signInNeedsUserMonth: user_month_tokens is a positive whole number, with s
   for (const bad of [0, -5, 1.5, "100"]) assert.deepEqual(chatProblems({ ...signedIn, user_month_tokens: bad }, "google"), ["user_month_tokens is a positive whole number"]);
 });
 
-test("signInNotOnAzure: sign_in is for a chat on Google", () => {
-  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn, user_month_tokens: 100 }, "azure"), ["sign_in is for a chat on Google", "user_month_tokens is for a chat on Google"]);
-  assert.deepEqual(chatProblems({ ...azureChat, user_month_tokens: 100 }, "azure"), ["user_month_tokens is for a chat on Google"]);
+test("signInOnAzure: sign_in is checked on a chat on Azure as on Google", () => {
+  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn, user_month_tokens: 100 }, "azure"), []);
+  assert.deepEqual(chatProblems({ ...azureChat, sign_in: signIn }, "azure"), ["sign_in needs user_month_tokens, the tokens a signed-in reader gets a month"]);
+  assert.deepEqual(chatProblems({ ...azureChat, sign_in: { ...signIn, issuer: "http://id.example.test" }, user_month_tokens: 100 }, "azure"), ["sign_in.issuer is an https:// address"]);
+  assert.deepEqual(chatProblems({ ...azureChat, user_month_tokens: 100 }, "azure"), ["user_month_tokens needs sign_in"]);
 });
