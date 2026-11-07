@@ -59,12 +59,12 @@ run "sign_in_with_user_month_reads_the_vault" {
     user_month_tokens = 2000000
   }
   assert {
-    condition     = [for s in azurerm_container_app.chat.secret : s.name if s.value == null] == ["chat-reader-secret"]
-    error_message = "sign_in gives the app one secret, chat-reader-secret, by reference and with no value of its own."
+    condition     = length(azurerm_container_app.chat.secret) == 0
+    error_message = "the app holds no Container Apps secret, whose value listing the app's secrets would hand out."
   }
   assert {
-    condition     = [for e in azurerm_container_app.chat.template[0].container[0].env : e.secret_name if e.name == "CHAT_READER_SECRET"] == ["chat-reader-secret"]
-    error_message = "sign_in hands the app CHAT_READER_SECRET from the secret chat-reader-secret."
+    condition     = length([for e in azurerm_container_app.chat.template[0].container[0].env : e if e.name == "CHAT_READER_SECRET_URL"]) == 1 && length([for e in azurerm_container_app.chat.template[0].container[0].env : e if e.name == "CHAT_READER_SECRET"]) == 0
+    error_message = "sign_in names the vault's URL for the reader secret, and never the secret."
   }
   assert {
     condition     = one([for e in azurerm_container_app.chat.template[0].container[0].env : e.value if e.name == "CHAT_OIDC_ISSUER"]) == "https://id.example.test"
@@ -76,7 +76,7 @@ run "no_sign_in_reads_no_secret_but_keeps_the_vault" {
   command         = plan
   expect_failures = [check.app_host]
   assert {
-    condition     = length(azurerm_container_app.chat.secret) == 0 && length([for e in azurerm_container_app.chat.template[0].container[0].env : e if startswith(e.name, "CHAT_OIDC") || e.name == "CHAT_READER_SECRET"]) == 0
+    condition     = length(azurerm_container_app.chat.secret) == 0 && length([for e in azurerm_container_app.chat.template[0].container[0].env : e if startswith(e.name, "CHAT_OIDC") || startswith(e.name, "CHAT_READER_SECRET")]) == 0
     error_message = "without sign_in the app has no secret and no sign-in variable."
   }
   assert {

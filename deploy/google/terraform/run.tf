@@ -90,6 +90,13 @@ resource "google_cloud_run_v2_service" "chat" {
         name  = "CHAT_PROXY_HOPS"
         value = tostring(var.proxy_hops)
       }
+      # The hop Firebase Hosting adds is Google's, and the service is also reachable at its run.app
+      # address, where no such hop exists; so a hop is skipped only where its entry is one of
+      # Google's own addresses, and a caller there cannot choose the bucket's key.
+      env {
+        name  = "CHAT_FRONT"
+        value = "google"
+      }
       # With the Anthropic API and no federation, the key rides in from the project's secret,
       # latest version. The secret is the owner's: the module neither makes it nor grants access
       # to it, so a deploy that mounts it before the owner's three commands fails at Cloud Run's

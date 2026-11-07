@@ -79,18 +79,6 @@ resource "azurerm_container_app" "chat" {
     identity = azurerm_user_assigned_identity.run.id
   }
 
-  # With sign_in the reader secret rides in from the vault, by a reference without a version, which
-  # Container Apps reads again within half an hour of a new one. The app reads it as its own
-  # identity; a deploy before the owner has added the secret fails at the revision, by name.
-  dynamic "secret" {
-    for_each = var.sign_in == null ? [] : [1]
-    content {
-      name                = local.reader_secret_name
-      key_vault_secret_id = "${azurerm_key_vault.this.vault_uri}secrets/${local.reader_secret_name}"
-      identity            = azurerm_user_assigned_identity.run.id
-    }
-  }
-
   ingress {
     external_enabled = true
     target_port      = 8080
@@ -118,13 +106,6 @@ resource "azurerm_container_app" "chat" {
         content {
           name  = env.key
           value = env.value
-        }
-      }
-      dynamic "env" {
-        for_each = var.sign_in == null ? [] : [1]
-        content {
-          name        = "CHAT_READER_SECRET"
-          secret_name = local.reader_secret_name
         }
       }
     }

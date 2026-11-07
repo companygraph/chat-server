@@ -36,3 +36,16 @@ test("with no trusted hop the address is the last entry, the one the ingress app
   assert.equal(clientAddress(req("198.51.100.7, 203.0.113.5"), 0), "203.0.113.5", "a forged entry is ignored");
   assert.equal(clientAddress(req("198.51.100.7, 198.51.100.9, 203.0.113.5"), 0), "203.0.113.5", "two forged entries are ignored");
 });
+
+// On Google a caller reaches the service through Hosting, whose own address Cloud Run's front end
+// appends after the visitor's, or directly, where the last entry is the caller's own. A hop is
+// skipped only where its entry is a front address, so the direct caller cannot choose the key.
+test("a hop is skipped only for the front end's own address", () => {
+  const req = (xff) => ({ headers: { "x-forwarded-for": xff }, socket: { remoteAddress: "10.0.0.9" } });
+  const front = (a) => a === "74.125.212.66";
+  assert.equal(clientAddress(req("203.0.113.5, 74.125.212.66"), 1, front), "203.0.113.5", "through Hosting: the visitor");
+  assert.equal(clientAddress(req("198.51.100.7, 203.0.113.5, 74.125.212.66"), 1, front), "203.0.113.5", "through Hosting, forged: the visitor");
+  assert.equal(clientAddress(req("203.0.113.5"), 1, front), "203.0.113.5", "direct: the caller");
+  assert.equal(clientAddress(req("198.51.100.7, 203.0.113.5"), 1, front), "203.0.113.5", "direct, forged: still the caller");
+  assert.equal(clientAddress(req("198.51.100.7, 203.0.113.5"), 1, () => null), "198.51.100.7", "ranges unknown: the hop count alone, as before");
+});

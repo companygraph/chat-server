@@ -24,7 +24,7 @@ Where the deployment has sign-in, the body may also carry `model`, one of the id
 
 A page whose `Origin` the deployment named gets `Access-Control-Allow-Origin` on the answer; a page whose `Origin` it did not name is refused; a client that sends no `Origin` passes.
 
-The bucket of twenty an hour is keyed on the address Google's front end writes into `X-Forwarded-For`, so it holds for a page that arrives through Firebase Hosting; a caller that reaches the Cloud Run address directly writes that header itself and chooses its own key, and there the meter is the only bound. On Azure it is keyed on the address Container Apps' ingress appends, on the domain and the app's own name alike.
+The bucket of twenty an hour is keyed on the address Google's front end writes into `X-Forwarded-For`, so it holds for a page that arrives through Firebase Hosting; a caller that reaches the Cloud Run address directly is keyed on its own address as well, since the hop Hosting adds is skipped only where its entry is one of Google's own addresses, by the ranges Google publishes, and a direct caller's last entry is its own. On Azure it is keyed on the address Container Apps' ingress appends, on the domain and the app's own name alike.
 
 ## The events
 
