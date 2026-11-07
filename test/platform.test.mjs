@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { meterStore, readerStore, firestoreReaders, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
+import { meterStore, readerStore, firestoreReaders, tableReaders, load, METERS, identityTokenSource, IDENTITIES, questionSource, QUESTIONS } from "../lib/platform.mjs";
 import { MemoryStore } from "../lib/meter.mjs";
 import { FirestoreStore } from "../lib/platform/google/meter.mjs";
 import { TableStore } from "../lib/platform/azure/meter.mjs";
@@ -101,8 +101,30 @@ test("readerStore on firestore keeps the reader at their own path", async () => 
   assert.equal(store.ref.p, "chat-readers/abc");
 });
 
-test("readerStoreTableRefused says what sign-in needs", async () => {
-  await assert.rejects(readerStore("table", "k"), (e) => e.message === "CHAT_METER=table keeps no readers' months; sign-in needs firestore or memory");
+test("readerStore refuses a meter that keeps no readers' months, saying what sign-in needs", async () => {
+  await assert.rejects(readerStore("file", "k"), (e) => e.message === "CHAT_METER=file keeps no readers' months; sign-in needs firestore, table or memory");
+});
+
+// On Azure a reader's month is a row of its own in the meter's table, at the partition
+// `readers`, and every reader's store shares one table client, opened with the meter's options.
+test("readerStore on table keeps each reader at their own row of one shared client", async () => {
+  const opened = [];
+  const client = { name: "client" };
+  const adapters = { table: tableReaders(async (options) => { opened.push(options); return client; }) };
+  const options = { tableUrl: "https://example.table.core.windows.net/", clientId: "00000000-0000-0000-0000-000000000001" };
+  const [a, b] = await Promise.all([readerStore("table", "abc", adapters, options), readerStore("table", "def", adapters, options)]);
+  const c = await readerStore("table", "abc", adapters, options);
+  assert.deepEqual(opened, [options], "the client is made once, on the first reader, from the meter's options");
+  assert.ok(a.client === client && b.client === client && c.client === client);
+  assert.deepEqual([a.partition, a.row, b.partition, b.row], ["readers", "abc", "readers", "def"]);
+});
+
+test("a table client that could not be made is made again on the next reader", async () => {
+  let calls = 0;
+  const adapters = { table: tableReaders(async () => { if (calls++ === 0) throw new Error("no endpoint"); return {}; }) };
+  await assert.rejects(readerStore("table", "k", adapters), /no endpoint/);
+  assert.ok(await readerStore("table", "k", adapters));
+  assert.equal(calls, 2);
 });
 
 test("readerStore called twice at once for one key gives one store", async () => {

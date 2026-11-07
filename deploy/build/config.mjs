@@ -63,9 +63,9 @@ export function federationProblems(c, platform = "google") {
   return problems;
 }
 
-// The answer check runs on Google alone in this release: the Azure module holds no secret by
-// design, so TypeSafe's key has nowhere to come from there.
-const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold", "sign_in", "user_month_tokens"];
+// The answer check runs on Google alone in this release: the Azure module's key vault holds the
+// reader secret and nothing else, so TypeSafe's key has nowhere to come from there.
+const GOOGLE_ONLY = ["site_id", "run_host", "verdict", "verdict_threshold"];
 const AZURE_ONLY = ["storage_account", "app_host", "dns_ready", "questions_workspace_id", "analyst_client_id"];
 
 // chat.json's sign_in, checked by form for the same reason as the federation: Terraform drops a key
@@ -128,5 +128,5 @@ export function chatProblems(c, platform) {
     if (!["global", "us"].includes(c.inference_geo)) problems.push("inference_geo is global or us");
     else if (c.provider !== "anthropic") problems.push("inference_geo is for provider anthropic; on Vertex the region is the deployment's");
   }
-  return [...problems, ...federationProblems(c, platform), ...(platform === "google" ? signInProblems(c) : [])];
+  return [...problems, ...federationProblems(c, platform), ...signInProblems(c)];
 }

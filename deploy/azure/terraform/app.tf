@@ -1,5 +1,5 @@
-# The service, and the identity of its own that may pull its image, keep the meter and ask for the
-# token it trades at Anthropic, and nothing else.
+# The service, and the identity of its own that may pull its image, keep the meter, read the reader
+# secret and ask for the token it trades at Anthropic, and nothing else.
 resource "azurerm_user_assigned_identity" "run" {
   name                = "chat-run"
   location            = data.azurerm_resource_group.this.location
@@ -48,7 +48,7 @@ locals {
       ANTHROPIC_WORKSPACE_ID       = var.anthropic_federation.workspace_id
     } : k => v if v != null
   }
-  env = merge(local.federation_env, { for k, v in { CHAT_INFERENCE_GEO = var.inference_geo } : k => v if v != null }, {
+  env = merge(local.federation_env, local.sign_in_env, { for k, v in { CHAT_INFERENCE_GEO = var.inference_geo } : k => v if v != null }, {
     CHAT_MCP_URL           = var.mcp_url
     CHAT_ORIGINS           = join(",", var.origins)
     CHAT_HOSTS             = join(",", compact([var.domain, local.app_host]))
@@ -77,6 +77,18 @@ resource "azurerm_container_app" "chat" {
   registry {
     server   = data.azurerm_container_registry.this.login_server
     identity = azurerm_user_assigned_identity.run.id
+  }
+
+  # With sign_in the reader secret rides in from the vault, by a reference without a version, which
+  # Container Apps reads again within half an hour of a new one. The app reads it as its own
+  # identity; a deploy before the owner has added the secret fails at the revision, by name.
+  dynamic "secret" {
+    for_each = var.sign_in == null ? [] : [1]
+    content {
+      name                = local.reader_secret_name
+      key_vault_secret_id = "${azurerm_key_vault.this.vault_uri}secrets/${local.reader_secret_name}"
+      identity            = azurerm_user_assigned_identity.run.id
+    }
   }
 
   ingress {
@@ -108,10 +120,17 @@ resource "azurerm_container_app" "chat" {
           value = env.value
         }
       }
+      dynamic "env" {
+        for_each = var.sign_in == null ? [] : [1]
+        content {
+          name        = "CHAT_READER_SECRET"
+          secret_name = local.reader_secret_name
+        }
+      }
     }
   }
 
-  depends_on = [azurerm_role_assignment.pull, azurerm_role_assignment.meter]
+  depends_on = [azurerm_role_assignment.pull, azurerm_role_assignment.meter, azurerm_role_assignment.reader_secret]
 }
 
 check "app_host" {
