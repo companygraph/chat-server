@@ -567,6 +567,29 @@ test("questionLineHasModelAndEffort", async () => {
   assert.deepEqual([JSON.parse(out[1]).model, JSON.parse(out[1]).effort], ["claude-sonnet-5", "low"]);
 });
 
+for (const [name, roles] of [["roleLessReaderIsAVisitor", {}], ["roleElsewhereIsAVisitorHere", { opus: { "org-other": "other.test" } }]]) {
+  test(name, async () => {
+    const model = capturing();
+    const { keysAsked, readers } = readerMeters();
+    const meter = new Meter(new MemoryStore(), { monthTokens: 1_000_000 });
+    const base = await listen({ cfg: signedIn(), signIn: verifier(), readers, model, log: lines().log, meter });
+    const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en" }, { authorization: await bearer(roles) });
+    assert.equal(r.status, 200);
+    const ev = await events(r);
+    assert.deepEqual(ev.at(-1)[1].by, { model: "claude-sonnet-5", effort: "low" });
+    assert.deepEqual(keysAsked, [], "no reader's month is opened for a reader with no role on this site");
+    assert.ok((await meter.state()).dayTokens > 0, "the message spends the day's share, as a visitor's does");
+  });
+}
+
+test("roleLessReaderMayNotRaiseEffort", async () => {
+  const { readers } = readerMeters();
+  const base = await listen({ cfg: signedIn(), signIn: verifier(), readers, model: capturing(), log: lines().log });
+  const r = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", effort: "medium" }, { authorization: await bearer({}) });
+  assert.equal(r.status, 403);
+  assert.equal((await r.json()).error.code, "not_granted", "as for a visitor");
+});
+
 test("getChatListsModels", async () => {
   const visitor = await (await fetch(`${await listen()}/chat`)).json();
   assert.deepEqual(visitor.models, Object.keys(MODELS));
