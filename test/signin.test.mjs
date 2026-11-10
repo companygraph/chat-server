@@ -81,7 +81,7 @@ test("signedOutSaysNothingOfTheToken", async () => {
 
 test("roleOfThisSite", async () => {
   const v = signInVerifier(SIGN_IN, { jwks });
-  for (const [role, id] of [["sonnet-5-5", "claude-sonnet-5-5"], ["opus", "claude-opus-5-5"], ["fable", "claude-fable-5-1"], ["haiku", "claude-haiku-5-5"]]) {
+  for (const [role, id] of [["sonnet-5-5", "claude-sonnet-5-5"], ["opus", "claude-opus-5-5"], ["fable", "claude-fable-5-2"], ["haiku", "claude-haiku-5-5"]]) {
     const reader = await v.reader(`Bearer ${await token({ [ROLES]: { [role]: { [SITE_ORG]: "blust.ch" } } })}`);
     assert.equal(reader?.sub, "reader-1");
     assert.deepEqual([...(reader?.models ?? [])].sort(), [id, "claude-sonnet-5"].sort(), role);
@@ -106,7 +106,7 @@ test("noRolesIsSonnetOnly", async () => {
 test("prefixVariant", async () => {
   const v = signInVerifier({ ...SIGN_IN, rolePrefix: "blust-ch-" }, { jwks });
   const granted = await v.reader(`Bearer ${await token({ [ROLES]: { "blust-ch-fable": { [OTHER_ORG]: "blust.ch" } } })}`);
-  assert.deepEqual([...(granted?.models ?? [])].sort(), ["claude-fable-5-1", "claude-sonnet-5"]);
+  assert.deepEqual([...(granted?.models ?? [])].sort(), ["claude-fable-5-2", "claude-sonnet-5"]);
   const other = await v.reader(`Bearer ${await token({ [ROLES]: { "companygraph-io-fable": { [OTHER_ORG]: "blust.ch" } } })}`);
   assert.deepEqual([...(other?.models ?? [])], ["claude-sonnet-5"]);
   // With a prefix the unprefixed role opens nothing, even granted in the site's organization.

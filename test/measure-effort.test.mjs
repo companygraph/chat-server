@@ -21,7 +21,7 @@ const run = (args, env) => new Promise((done, fail) => {
 const offline = () => { const env = { ...process.env, ANTHROPIC_BASE_URL: "http://127.0.0.1:9" }; delete env.ANTHROPIC_API_KEY; return env; };
 
 // Every model at low, and Fable and Opus at the four efforts above it.
-const matrix = [...Object.keys(MODELS).map((model) => ({ model, effort: "low" })), ...["claude-fable-5-1", "claude-opus-5-5"].flatMap((model) => EFFORTS.slice(1).map((effort) => ({ model, effort })))];
+const matrix = [...Object.keys(MODELS).map((model) => ({ model, effort: "low" })), ...["claude-fable-5-2", "claude-opus-5-5"].flatMap((model) => EFFORTS.slice(1).map((effort) => ({ model, effort })))];
 const upper = (questions) => matrix.reduce((s, c) => s + estimateFor(c) * (MAX_ROUNDS + 1) * questions, 0).toLocaleString("en-US");
 
 test("with no flag the script estimates, calls nothing, and holds every call at its estimate for the most calls a message can make", async () => {
@@ -30,8 +30,8 @@ test("with no flag the script estimates, calls nothing, and holds every call at 
   const q = QUESTION_TITLES.length;
   assert.match(out, new RegExp(`^measure-effort: 13 choices × ${q} questions = ${13 * q} messages; nothing was called\\.$`, "m"));
   assert.equal(out.split("\n").filter((l) => /^\| (Sonnet|Opus|Fable|Haiku) /.test(l)).length, 13);
-  const fableMax = estimateFor({ model: "claude-fable-5-1", effort: "max" }).toLocaleString("en-US");
-  assert.ok(out.split("\n").some((l) => l.startsWith(`| Fable 5.1 | max | 64,000 | ${fableMax} |`)), out);
+  const fableMax = estimateFor({ model: "claude-fable-5-2", effort: "max" }).toLocaleString("en-US");
+  assert.ok(out.split("\n").some((l) => l.startsWith(`| Fable 5.2 | max | 64,000 | ${fableMax} |`)), out);
   assert.match(out, new RegExp(`^Total: upper bound ${upper(q)} units`, "m"));
   assert.match(out, /^Likely: one round that calls the tools and then the answer/m);
 });

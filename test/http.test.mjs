@@ -533,7 +533,7 @@ test("notGrantedIs403", async () => {
   assert.equal((await visitor.json()).error.code, "not_granted");
   const effort = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", effort: "medium" });
   assert.equal((await effort.json()).error.code, "not_granted", "a visitor may not raise the effort either");
-  const reader = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-fable-5-1" }, { authorization: await bearer({ opus: { "org-site": "site.test" } }) });
+  const reader = await post(base, { messages: [{ role: "user", content: "hi" }], lang: "en", model: "claude-fable-5-2" }, { authorization: await bearer({ opus: { "org-site": "site.test" } }) });
   assert.equal(reader.status, 403);
   assert.equal((await reader.json()).error.code, "not_granted");
   assert.equal(model.requests.length, 0);
@@ -593,7 +593,7 @@ test("roleLessReaderMayNotRaiseEffort", async () => {
 test("getChatListsModels", async () => {
   const visitor = await (await fetch(`${await listen()}/chat`)).json();
   assert.deepEqual(visitor.models, Object.keys(MODELS));
-  assert.deepEqual(visitor.models, ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1", "claude-haiku-5-5"]);
+  assert.deepEqual(visitor.models, ["claude-sonnet-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2", "claude-haiku-5-5"]);
   assert.equal(visitor.sign_in, null);
   assert.equal(visitor.model, "claude-sonnet-5");
   const signed = await (await fetch(`${await listen({ cfg: signedIn(), signIn: verifier(), readers: readerMeters().readers })}/chat`)).json();

@@ -193,6 +193,16 @@ test("the second ask carries no tools and no tool choice, and still the note", (
   assert.equal(params({ system: "S", tools, messages, final: true }).tools.length, 2, "the first final request keeps them listed");
 });
 
+test("the second ask leaves the thinking blocks out, since they were signed over the tools it no longer lists", () => {
+  const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }];
+  const turn = [{ type: "thinking", thinking: "", signature: "sig" }, { type: "redacted_thinking", data: "d" }, { type: "text", text: "Looking." }, { type: "tool_use", id: "a", name: "search", input: {} }];
+  const messages = [{ role: "user", content: "q" }, { role: "assistant", content: turn }, { role: "user", content: results }];
+  const again = params({ system: "S", tools, messages, final: true, again: true });
+  assert.deepEqual(again.messages[1].content.map((b) => b.type), ["text", "tool_use"], "the text and the call stay, the reasoning goes");
+  assert.equal(params({ system: "S", tools, messages, final: true }).messages[1].content.length, 4, "the first final request lists the same tools and keeps every block");
+  assert.equal(turn.length, 4, "the caller's turn is left alone");
+});
+
 test("the final round says so to the model: the note follows the last tool answer, and no other round carries it", () => {
   const results = [{ type: "tool_result", tool_use_id: "a", content: "x" }];
   const messages = [{ role: "user", content: "q" }, { role: "assistant", content: [{ type: "tool_use", id: "a", name: "search", input: {} }] }, { role: "user", content: results }];

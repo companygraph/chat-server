@@ -78,7 +78,7 @@ test("visitorOtherEffortNotGranted", () => {
 });
 
 test("readerUngrantedModelNotGranted", () => {
-  assert.throws(() => chosen({ model: "claude-fable-5-1", effort: "low" }, reader("claude-opus-5-5")), code("not_granted"));
+  assert.throws(() => chosen({ model: "claude-fable-5-2", effort: "low" }, reader("claude-opus-5-5")), code("not_granted"));
 });
 
 test("readerGrantedAnyEffort", () => {
