@@ -11,3 +11,5 @@ test/fixtures/
 # a caller ignores and which would only mislead there.
 .terraform/
 deploy/**/.terraform.lock.hcl
+# A tool's local settings can hold a secret; conventions-sync keeps the lines below.
+**/.claude/settings.local.json
