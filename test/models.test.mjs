@@ -9,7 +9,7 @@ test("everyModelHasWeights", () => {
   }
   assert.deepEqual(MODELS["claude-sonnet-5"].weights, { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 });
   assert.deepEqual(MODELS["claude-sonnet-5-5"].weights, { input: 1, cacheWrite: 1.25, cacheRead: 0.05, output: 5 });
-  assert.deepEqual(MODELS["claude-fable-5-1"].weights, { input: 5, cacheWrite: 6.25, cacheRead: 0.125, output: 25 });
+  assert.deepEqual(MODELS["claude-fable-5-2"].weights, { input: 4, cacheWrite: 5, cacheRead: 0.1, output: 20 });
 });
 
 test("outputLimitPerEffort", () => {
@@ -17,7 +17,7 @@ test("outputLimitPerEffort", () => {
 });
 
 test("rolesAreTheSpecs", () => {
-  assert.deepEqual(Object.fromEntries(Object.entries(MODELS).map(([id, m]) => [id, m.role])), { "claude-sonnet-5": null, "claude-sonnet-5-5": "sonnet-5-5", "claude-opus-5-5": "opus", "claude-fable-5-1": "fable", "claude-haiku-5-5": "haiku" });
+  assert.deepEqual(Object.fromEntries(Object.entries(MODELS).map(([id, m]) => [id, m.role])), { "claude-sonnet-5": null, "claude-sonnet-5-5": "sonnet-5-5", "claude-opus-5-5": "opus", "claude-fable-5-2": "fable", "claude-haiku-5-5": "haiku" });
 });
 
 test("the default is Sonnet 5 at low effort, and a call waits a minute at low and fourteen otherwise", () => {

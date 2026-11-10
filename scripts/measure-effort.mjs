@@ -8,7 +8,7 @@
 //
 // It runs the loop itself, `answer()`, over the fixture host, the meta-model's worked example,
 // with the real model, asking each of the example's own questions once per model and effort:
-// every model at `low`, and Fable 5.1 and Opus 5.5 at every effort. Each message is a signed-in
+// every model at `low`, and Fable 5.2 and Opus 5.5 at every effort. Each message is a signed-in
 // reader's, with a reader's meter beside the site's, since only a reader is offered anything but
 // Sonnet 5 at `low` and only a reader's call is bound whole by its effort's time. It records per
 // message the rounds, the seconds, the last call's stop reason, whether that call was cut by the
@@ -61,10 +61,10 @@ for (let i = 0; i < args.length; i++) {
 mode ??= "--estimate";
 const questions = QUESTION_TITLES.slice(0, take);
 
-// Every model at `low`, then Fable 5.1 and Opus 5.5 at each effort above it.
+// Every model at `low`, then Fable 5.2 and Opus 5.5 at each effort above it.
 const choices = [
   ...Object.keys(MODELS).map((model) => ({ model, effort: "low" })),
-  ...["claude-fable-5-1", "claude-opus-5-5"].flatMap((model) => EFFORTS.filter((e) => e !== "low").map((effort) => ({ model, effort }))),
+  ...["claude-fable-5-2", "claude-opus-5-5"].flatMap((model) => EFFORTS.filter((e) => e !== "low").map((effort) => ({ model, effort }))),
 ];
 
 const n = (x) => Math.round(x).toLocaleString("en-US");

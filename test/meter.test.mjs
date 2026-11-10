@@ -158,7 +158,7 @@ test("the Firestore store runs the function inside a transaction on one document
 });
 
 test("unitsAtFable weighs usage at that model's price", () => {
-  assert.equal(units({ input_tokens: 1000, output_tokens: 100 }, "claude-fable-5-1"), 7500);
+  assert.equal(units({ input_tokens: 1000, output_tokens: 100 }, "claude-fable-5-2"), 6000);
 });
 
 test("unitsDefaultUnchanged keeps the default price when no model is given", () => {
@@ -176,7 +176,7 @@ test("estimateForDefaultIs30000", () => {
 });
 
 test("estimateForFableMax", () => {
-  assert.equal(estimateFor({ model: "claude-fable-5-1", effort: "max" }), 1690000);
+  assert.equal(estimateFor({ model: "claude-fable-5-2", effort: "max" }), 1352000);
 });
 
 test("signedInSkipsDay reserves against the month alone", async () => {
