@@ -6,19 +6,23 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ROOT } from "../build/config.mjs";
+import { pinOf, installedPackage, CHAT } from "../../lib/pin.mjs";
 
+// A deployment takes the chat from git as companygraph-chat-server or from npm as
+// @companygraph/chat-server, so the pin is read under whichever name and in whichever form it is
+// written, and held by its tag.
 export function registerPinTests() {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
-  const installed = JSON.parse(fs.readFileSync(path.join(ROOT, "node_modules/companygraph-chat-server/package.json"), "utf8"));
+  const chat = pinOf(pkg, CHAT);
+  const installed = installedPackage(chat.name, ROOT);
   const repo = path.join(ROOT, "..");
 
   test("the installed chat server is the release chat/package.json pins", () => {
-    const tag = pkg.dependencies["companygraph-chat-server"].split("#")[1];
-    assert.equal("v" + installed.version, tag);
+    assert.equal("v" + installed.version, chat.tag);
   });
 
   test("the chat's release is named once, in chat/package.json, the workflow and the module", () => {
-    const tag = pkg.dependencies["companygraph-chat-server"].split("#")[1];
+    const tag = chat.tag;
     const refs = [];
     for (const dir of [".github/workflows", "infra/chat"]) {
       const d = path.join(repo, dir);

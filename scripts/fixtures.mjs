@@ -1,14 +1,18 @@
-// Fetches companygraph/meta-model into test/fixtures/ at the tag the installed
-// companygraph-mcp-server pins, for its worked example and core/. The example is content, not a
+// Fetches companygraph/meta-model into test/fixtures/ at the tag the installed MCP server pins, for its worked example and core/. The example is content, not a
 // dependency: the server package ships lib/, bin/ and deploy/ and no fixture.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { pinOf, installedPackage, SERVER, PARSER } from "../lib/pin.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const server = JSON.parse(fs.readFileSync(path.join(root, "node_modules/companygraph-mcp-server/package.json"), "utf8"));
-const [, repo, tag] = server.dependencies["companygraph-meta-model"].match(/^github:([^#]+)#(.+)$/);
+const own = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+const server = installedPackage(pinOf(own, SERVER).name, root);
+// The server takes the parser from npm by version, which names its tag; a git pin names its
+// repository too.
+const { spec, tag } = pinOf(server, PARSER);
+const repo = /^github:([^#]+)#/.exec(spec)?.[1] ?? "companygraph/meta-model";
 const url = `https://codeload.github.com/${repo}/tar.gz/${/^[0-9a-f]{40}$/.test(tag) ? tag : `refs/tags/${tag}`}`;
 const target = path.join(root, "test", "fixtures", "meta-model");
 const marker = path.join(target, ".ref");

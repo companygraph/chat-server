@@ -1,8 +1,12 @@
 {
-  "name": "companygraph-chat-server",
+  "name": "@companygraph/chat-server",
   "version": "0.45.0",
   "description": "A chat over any CompanyGraph MCP host: the model asked in prose, answered from its tools",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/companygraph/chat-server.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -66,9 +70,12 @@
     "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
+    "@companygraph/mcp-server": "0.76.0",
     "@types/node": "22.20.4",
-    "companygraph-mcp-server": "github:companygraph/mcp-server#v0.75.3",
     "playwright": "^1.63.0",
     "typescript": "7.0.2"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

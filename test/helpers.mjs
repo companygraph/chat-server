@@ -4,9 +4,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readDir } from "companygraph-mcp-server/read";
-import { buildSnapshot } from "companygraph-mcp-server/snapshot";
-import { createHttpServer } from "companygraph-mcp-server/http";
+import { readDir } from "@companygraph/mcp-server/read";
+import { buildSnapshot } from "@companygraph/mcp-server/snapshot";
+import { createHttpServer } from "@companygraph/mcp-server/http";
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "meta-model");
 export const COMMIT = "0123456789abcdef0123456789abcdef01234567";

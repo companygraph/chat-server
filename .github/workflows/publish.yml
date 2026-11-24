@@ -1,0 +1,59 @@
+name: publish
+
+# A release publishes the package at its tag to npm, by trusted publishing: npm takes a version
+# only from this workflow, in the `npm` environment, which lets a job in only from a tag matching
+# `v*`, and GitHub vouches for the run with a short-lived token, so no publish token is held
+# anywhere. npm records the provenance, the commit the version came from.
+#
+# Nothing is installed and nothing is built: the package has no build step, its declarations are
+# committed, and the files at the tag are what npm gets. CI held those files before the tag was
+# cut.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      # Trusted publishing needs Node 22.14 and npm 11.5.1 or later.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - name: The tag names the version package.json carries
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::the tag is $GITHUB_REF_NAME and package.json says $version"
+            exit 1
+          fi
+      - name: npm can publish by trusted publishing
+        run: |
+          node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number);
+            if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) {
+              console.log(`::error::npm ${process.argv[1]} cannot publish by trusted publishing; it needs 11.5.1 or later`);
+              process.exit(1);
+            }' "$(npm --version)"
+      # The first version of a package is published by hand, because npm attaches a trusted
+      # publisher only to a package that already exists. Its release then finds it there. The
+      # version's own document is asked, not `npm view`: a new package's metadata can lag its
+      # version by most of an hour, and a publish started in that gap fails half way.
+      - name: Publish, unless this version is already on npm
+        run: |
+          name="$(node -p 'require("./package.json").name')"
+          version="$(node -p 'require("./package.json").version')"
+          if curl -sfo /dev/null "https://registry.npmjs.org/${name/\//%2f}/$version"; then
+            echo "::notice::$name@$version is already on npm"
+            exit 0
+          fi
+          npm publish
