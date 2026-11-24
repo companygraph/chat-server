@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
-import { renderPage } from "companygraph-chat-server/page";
+import { renderPage } from "../../lib/page.mjs";
 import { ROOT, DIST, chat } from "../build/config.mjs";
 
 export function registerPageTests() {

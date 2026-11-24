@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { createHttpServer } from "companygraph-mcp-server/http";
+import { createHttpServer } from "@companygraph/mcp-server/http";
 import { connectHost } from "../lib/host.mjs";
 import { startFixtureHost, exampleSnapshot, COMMIT, EXAMPLE_ROOT, QUESTION_TITLES } from "./helpers.mjs";
 import { REFRESH_FAILURE_COOLDOWN_MS, START_WAITS_MS } from "../lib/host.mjs";
