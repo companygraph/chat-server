@@ -70,7 +70,7 @@
     "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
-    "@companygraph/mcp-server": "0.76.0",
+    "@companygraph/mcp-server": "0.77.0",
     "@types/node": "22.20.4",
     "playwright": "^1.63.0",
     "typescript": "7.0.2"
