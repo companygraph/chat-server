@@ -1,6 +1,6 @@
 {
   "name": "@companygraph/chat-server",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "description": "A chat over any CompanyGraph MCP host: the model asked in prose, answered from its tools",
   "license": "Apache-2.0",
   "repository": {
@@ -70,7 +70,7 @@
     "google-auth-library": "^9.15.1"
   },
   "devDependencies": {
-    "@companygraph/mcp-server": "0.76.0",
+    "@companygraph/mcp-server": "0.77.0",
     "@types/node": "22.20.4",
     "playwright": "^1.63.0",
     "typescript": "7.0.2"
